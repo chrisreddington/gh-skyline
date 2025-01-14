@@ -45,6 +45,7 @@ You can run the `gh skyline` command with the following flags:
   - Examples: `gh skyline --year 2020`, `gh skyline --year 2014-2024`
 - `-w`, `--web`: Open the GitHub profile for the authenticated or specified user.
   - Example: `gh skyline --web`, `gh skyline --user mona --web`
+- `-a`, `--art-only`: Show the ASCII art preview without generating an STL file.
 
 ### Examples
 
@@ -76,6 +77,12 @@ Generate a skyline from the user's join year to the current year:
 
 ```bash
 gh skyline --full
+```
+
+Generate only the ASCII preview for a skyline:
+
+```bash
+gh skyline --art-only
 ```
 
 Enable debug logging:
@@ -112,6 +119,10 @@ The extension generates ASCII art in terminal while loading, a unique and fun wa
 - `'▒'` Medium level: Moderate contribution activity
 - `'▓'` High level: Heavy contribution activity
 - `'╻┃╽'` Top level: Last block with contributions in the week (Low, Medium, High)
+
+## Visualizing your Skyline
+
+Once you have generated your STL file, you can visualize it using 3D modeling or 3D printing software. But did you know that you can upload your STL file to a GitHub repository and view your Skyline there? For example, take a look at [@chrisreddington's GitHub Skyline from 2011 - 2024](https://github.com/chrisreddington/chrisreddington/blob/master/chrisreddington-11-24-github-skyline.stl).
 
 ## Project Structure
 
