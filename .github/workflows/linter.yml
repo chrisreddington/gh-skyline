@@ -43,3 +43,7 @@ jobs:
           LINTER_RULES_PATH: .github/linters
           GOLANGCI_LINT_CONFIG: .golangci.yml
           VALIDATE_YAML_PRETTIER: false
+          # Allow Go toolchain auto-download so golangci-lint can satisfy the
+          # go.mod toolchain requirement (super-linter sets GOTOOLCHAIN=local
+          # internally, which we override here).
+          GOTOOLCHAIN: auto
