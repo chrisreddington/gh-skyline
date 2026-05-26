@@ -7,6 +7,7 @@ import * as THREE from "three";
 import {
   AbsoluteFill,
   interpolate,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
   type CalculateMetadataFunction,
@@ -206,7 +207,7 @@ const IntroCard: React.FC<{
   theme: Theme;
   to: number;
 }> = ({ data, total, range, theme, to }) => (
-  <Captions theme={theme} visibleFromFrame={45} visibleToFrame={to} placement="center">
+  <Captions theme={theme} visibleFromFrame={0} visibleToFrame={to} fadeFrames={20} placement="center">
     <div style={{ fontSize: 86, fontWeight: 700 }}>@{data.username.replace(/^@/, "")}</div>
     <div style={{ fontSize: 54, marginTop: 14, opacity: 0.88 }}>{range}</div>
     <div style={{ fontSize: 42, marginTop: 8, opacity: 0.78 }}>
@@ -220,6 +221,25 @@ const ChapterCaption: React.FC<{ configs: readonly YearCameraConfig[]; theme: Th
   theme,
 }) => {
   const frame = useCurrentFrame();
+
+  // Portrait-mode caption: show during the central portion of a sparse year's segment.
+  const portraitActive = configs.find((cfg) => {
+    if (!cfg.portraitCaption) return false;
+    const start = cfg.startFrame + Math.floor(cfg.segmentFrames * 0.25);
+    const end = cfg.startFrame + Math.floor(cfg.segmentFrames * 0.78);
+    return frame >= start && frame <= end;
+  });
+  if (portraitActive?.portraitCaption) {
+    const start = portraitActive.startFrame + Math.floor(portraitActive.segmentFrames * 0.25);
+    const end = portraitActive.startFrame + Math.floor(portraitActive.segmentFrames * 0.78);
+    return (
+      <Captions theme={theme} visibleFromFrame={start} visibleToFrame={end} placement="center">
+        {portraitActive.portraitCaption}
+      </Captions>
+    );
+  }
+
+  // Standard chapter caption: mid-segment for non-portrait canyon years.
   const active = configs.find((cfg) => {
     const start = cfg.startFrame + Math.floor(cfg.segmentFrames * 0.38);
     const end = cfg.startFrame + Math.floor(cfg.segmentFrames * 0.7);
@@ -246,6 +266,9 @@ const PanoramicOutro: React.FC<{
 }> = ({ from, to, username, firstYear, total, range, theme }) => {
   const frame = useCurrentFrame();
   const p = palette(theme);
+  const githubMarkSrc = theme === "dark"
+    ? staticFile("images/github-mark-white.svg")
+    : staticFile("images/github-mark.svg");
   const opacity = interpolate(frame, [from, from + 30, to - 5, to], [0, 1, 1, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -269,8 +292,31 @@ const PanoramicOutro: React.FC<{
         <div style={{ fontSize: 92, fontWeight: 760, marginTop: 12 }}>
           {total.toLocaleString()} contributions. Your skyline.
         </div>
-        <div style={{ fontSize: 34, marginTop: 22, opacity: 0.76 }}>
-          Let's build. &nbsp;□ gh-skyline &nbsp;@{username.replace(/^@/, "")}
+        <div style={{ fontSize: 34, marginTop: 22, opacity: 0.88, fontWeight: 700 }}>
+          Let&apos;s build.
+        </div>
+        <div
+          style={{
+            marginTop: 10,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            fontSize: 28,
+            opacity: 0.78,
+          }}
+        >
+          <img
+            src={githubMarkSrc}
+            alt="GitHub"
+            width={28}
+            height={28}
+            style={{ display: "block" }}
+          />
+          github/gh-skyline
+        </div>
+        <div style={{ fontSize: 24, marginTop: 8, opacity: 0.6 }}>
+          @{username.replace(/^@/, "")}
         </div>
       </div>
     </AbsoluteFill>

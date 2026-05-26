@@ -37,27 +37,74 @@ export const themes: Record<Theme, ThemePalette> = {
 
 export type BucketLevel = 0 | 1 | 2 | 3 | 4;
 
+export interface LevelThresholds {
+  readonly low: number;
+  readonly medium: number;
+  readonly high: number;
+}
+
+function quantile(sorted: readonly number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.floor((sorted.length - 1) * p);
+  return sorted[idx] ?? 0;
+}
+
 /**
- * Bucket a day's contribution count into one of 5 levels using quartiles of
- * the year's peak day count. Mirrors GitHub's heuristic: count=0 always
- * lands at level 0; everything else is proportionally bucketed relative to
- * the year's peak so a quiet year still shows visible variation.
- *
- * For empty years (peakInYear=0) all days resolve to level 0.
- * Counts exceeding peakInYear clamp to level 4 (defensive — shouldn't occur).
+ * Build per-year activity thresholds from in-year non-zero counts.
+ * Thresholds are quantile-based so sparse and bursty years still use
+ * a meaningful spread of GitHub greens.
  */
-export function bucketLevel(count: number, peakInYear: number): BucketLevel {
-  if (count <= 0 || peakInYear <= 0) {
+export function buildLevelThresholds(counts: readonly number[]): LevelThresholds {
+  const active = counts
+    .filter((c) => Number.isFinite(c) && c > 0)
+    .map((c) => Math.max(1, Math.floor(c)))
+    .sort((a, b) => a - b);
+  if (active.length === 0) {
+    return { low: 0, medium: 0, high: 0 };
+  }
+  // Keep top-tier rare and expressive while still adapting per-year.
+  const low = quantile(active, 0.35);
+  const medium = quantile(active, 0.65);
+  const high = quantile(active, 0.9);
+  return { low, medium, high };
+}
+
+/**
+ * Bucket a day's contribution count into one of 5 levels.
+ *
+ * Preferred path: pass per-year quantile thresholds (buildLevelThresholds)
+ * to keep visual range across sparse, bursty, and dense years.
+ * Compatibility path: passing a numeric peak preserves the old ratio-based
+ * quartile bucketing.
+ */
+export function bucketLevel(
+  count: number,
+  thresholds: LevelThresholds | number,
+): BucketLevel {
+  if (count <= 0) {
     return 0;
   }
-  if (count >= peakInYear) {
+  // Backward compatibility: if called with a numeric peak, preserve the
+  // original ratio-based behaviour.
+  if (typeof thresholds === "number") {
+    const peakInYear = thresholds;
+    if (peakInYear <= 0) return 0;
+    if (count >= peakInYear) return 4;
+    const ratio = count / peakInYear;
+    if (ratio <= 0.25) return 1;
+    if (ratio <= 0.5) return 2;
+    if (ratio <= 0.75) return 3;
     return 4;
   }
-  const ratio = count / peakInYear;
-  if (ratio <= 0.25) return 1;
-  if (ratio <= 0.5) return 2;
-  if (ratio <= 0.75) return 3;
-  return 4;
+  if (thresholds.high <= 0) return 0;
+  if (thresholds.low === thresholds.medium && thresholds.medium === thresholds.high) {
+    return count >= thresholds.high ? 4 : 1;
+  }
+  if (count > thresholds.high) return 4;
+  if (count > thresholds.medium) return 3;
+  if (count > thresholds.low) return 2;
+  if (count > 0) return 1;
+  return 1;
 }
 
 /** Return the hex colour for a bucketed level under the given theme. */
@@ -68,6 +115,18 @@ export function colourForLevel(level: BucketLevel, theme: Theme): string {
 /** Lookup helper for compositions/CLI; keeps callers from importing `themes`. */
 export function palette(theme: Theme): ThemePalette {
   return themes[theme];
+}
+
+/**
+ * Resolve per-bar colour progress during reveal. Higher-intensity levels lag
+ * slightly so they "earn" their green later than low-intensity bars.
+ */
+export function revealColourProgress(revealT: number, level: BucketLevel): number {
+  if (revealT <= 0) return 0;
+  if (revealT >= 1) return 1;
+  const lag = 0.95 + level * 0.18;
+  const t = Math.pow(revealT, lag);
+  return t * t * (3 - 2 * t);
 }
 
 /**
@@ -94,19 +153,10 @@ export function levelMaterial(level: BucketLevel, theme: Theme): LevelMaterial {
   // dramatically to mark "this is the peak" without leaving the green family.
   const tints: readonly string[] = p.levels;
   // Big gap between L3 and L4 so peak tier reads as distinct landmarks.
-  const darkIntensities = [0, 0.45, 0.55, 1.10, 1.80];
-  const lightIntensities = [0, 0.06, 0.15, 0.30, 0.65];
+  const darkIntensities = [0, 0.07, 0.14, 0.22, 0.34];
+  const lightIntensities = [0, 0.03, 0.07, 0.12, 0.2];
   const intensities = theme === "dark" ? darkIntensities : lightIntensities;
-  // L4 uses a brightened tint pulled toward white-green so it pops over L3
-  // even with similar intensity.
-  const darkL4Tint = "#a8f5b8";
-  const lightL4Tint = "#216e39";
-  const emissive =
-    level === 4
-      ? theme === "dark"
-        ? darkL4Tint
-        : lightL4Tint
-      : tints[level] ?? "#000000";
+  const emissive = tints[level] ?? "#000000";
   return {
     emissive,
     emissiveIntensity: intensities[level] ?? 0,

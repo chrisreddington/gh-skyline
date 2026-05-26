@@ -1,15 +1,12 @@
 /**
- * <Skyline> renders one year's contribution grid as a single InstancedMesh
- * with per-instance colour. As each bar "reveals" (grows from 0 to full
- * height) its colour transitions smoothly from the L0 "no contributions"
- * grey to its final bucket colour — bars don't snap into their level, they
- * grade upward as they grow. This is the "colour swells with the city"
- * effect requested in v4.
+ * <Skyline> renders one year's contribution grid with instanced bar layers.
+ * As each bar reveals, a grey base contracts while the level-coloured layer
+ * grows in its place — a true grey→green transition instead of a hard swap.
  *
  * Design notes (v4):
- *  - Single InstancedMesh per year. Per-instance colour via setColorAt.
- *    Uniform moderate emissive so taller bars still read as luminous under
- *    the directional rig, without per-instance shader plumbing.
+ *  - Layered instanced meshes: one grey base + four level-colour overlays.
+ *    This keeps colour differentiation reliable in Remotion frame rendering,
+ *    where per-instance colour attributes can be inconsistent across snapshots.
  *  - Zero-contribution & out-of-year days are EXCLUDED from the instance set
  *    entirely — they were the source of the v3 z-fighting flicker (boxes
  *    pinned to height 0.0001 fighting the baseplate). In-year zero days are
@@ -27,7 +24,12 @@ import { Text } from "@react-three/drei";
 import { useCurrentFrame } from "remotion";
 import type { YearData, Theme } from "../schema";
 import { layoutBars, gridGeometry, type BarPlacement } from "../utils/grid";
-import { palette, levelMaterial } from "./theme";
+import {
+  levelMaterial,
+  palette,
+  revealColourProgress,
+  type BucketLevel,
+} from "./theme";
 import { MONA_SANS_MEDIUM } from "./typography";
 
 interface SkylineProps {
@@ -68,9 +70,6 @@ interface SkylineProps {
 }
 
 const TEMP_OBJECT = new THREE.Object3D();
-const TEMP_COLOR_A = new THREE.Color();
-const TEMP_COLOR_B = new THREE.Color();
-const TEMP_COLOR_OUT = new THREE.Color();
 
 /**
  * Spring-with-overshoot easing for bar reveals. t in [0,1] → height multiplier
@@ -80,24 +79,10 @@ const TEMP_COLOR_OUT = new THREE.Color();
 function springReveal(t: number): number {
   if (t <= 0) return 0;
   if (t >= 1) return 1;
-  const c1 = 1.6;
+  const c1 = 1.05;
   const c2 = c1 + 1;
   const x = t - 1;
   return 1 + c2 * x * x * x + c1 * x * x;
-}
-
-/**
- * Smooth perceptual colour-grow: as a bar grows from 0 to full reveal, its
- * colour interpolates from the L0 grey to its target level colour. The
- * easing front-loads colour so even short bars get a hint of green by
- * mid-reveal (otherwise sparse years look like dead grey blocks).
- */
-function colourGrowT(revealT: number): number {
-  if (revealT <= 0) return 0;
-  if (revealT >= 1) return 1;
-  // Smoothstep biased toward the colour appearing earlier than the height.
-  const t = revealT;
-  return t * t * (3 - 2 * t);
 }
 
 /**
@@ -136,88 +121,202 @@ const ActiveBars: React.FC<{
   opacity: number;
   resolveReveal: (bar: BarPlacement) => number;
 }> = ({ bars, cellSize, theme, opacity, resolveReveal }) => {
-  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const baseRef = useRef<THREE.InstancedMesh>(null);
+  const l1Ref = useRef<THREE.InstancedMesh>(null);
+  const l2Ref = useRef<THREE.InstancedMesh>(null);
+  const l3Ref = useRef<THREE.InstancedMesh>(null);
+  const l4Ref = useRef<THREE.InstancedMesh>(null);
   const p = palette(theme);
   const frame = useCurrentFrame();
+  const l1 = useMemo(() => bars.filter((b) => b.level === 1), [bars]);
+  const l2 = useMemo(() => bars.filter((b) => b.level === 2), [bars]);
+  const l3 = useMemo(() => bars.filter((b) => b.level === 3), [bars]);
+  const l4 = useMemo(() => bars.filter((b) => b.level === 4), [bars]);
 
-  // Per-level baseline emissive material settings — we average across L1..L4
-  // so the single shared material lifts every bar a touch without crushing
-  // the L1 lows or blowing out L4 highs. Co-tuned with B5 (ambient 0.18..0.30):
-  // total emissive midpoint is in the L2-L3 range to keep the family green.
-  const matSpec = useMemo(() => {
-    // Take L3 as the "average" emissive reference; intensity at ~0.55 (between
-    // L1=0.45 and L4=1.80 per v4 co-tune).
-    return levelMaterial(3, theme);
-  }, [theme]);
+  const baseMatSpec = useMemo(
+    () => ({
+      color: p.levels[0],
+      roughness: theme === "dark" ? 0.42 : 0.36,
+      metalness: 0.03,
+    }),
+    [p.levels, theme],
+  );
 
-  // Cache colour objects for L0 → L_n lerp.
-  const palette5 = useMemo(() => {
-    return p.levels.map((hex) => new THREE.Color(hex));
-  }, [p.levels]);
+  const l1Spec = useMemo(() => levelMaterial(1, theme), [theme]);
+  const l2Spec = useMemo(() => levelMaterial(2, theme), [theme]);
+  const l3Spec = useMemo(() => levelMaterial(3, theme), [theme]);
+  const l4Spec = useMemo(() => levelMaterial(4, theme), [theme]);
 
   useLayoutEffect(() => {
-    const mesh = meshRef.current;
-    if (!mesh) return;
-    const grey = palette5[0];
-    bars.forEach((bar, i) => {
-      const revealT = Math.min(1, Math.max(0, resolveReveal(bar)));
-      const revealMul = springReveal(revealT);
-      const fullH = bar.height;
-      const h = fullH * revealMul;
-      if (h < 1e-4) {
-        // Hide the instance well below the baseplate. Keeps the instance
-        // slot stable while preventing any visible flicker (the v3 trick of
-        // h=0.0001 was the actual culprit — boxes at the same Y as the
-        // baseplate fight for the same pixels).
-        TEMP_OBJECT.position.set(bar.x, -1000, bar.z);
-        TEMP_OBJECT.scale.set(cellSize, 0.0001, cellSize);
-      } else {
-        TEMP_OBJECT.position.set(bar.x, h / 2, bar.z);
-        TEMP_OBJECT.scale.set(cellSize, h, cellSize);
-      }
-      TEMP_OBJECT.rotation.set(0, 0, 0);
-      TEMP_OBJECT.updateMatrix();
-      mesh.setMatrixAt(i, TEMP_OBJECT.matrix);
+    const applyMatrices = (
+      mesh: THREE.InstancedMesh | null,
+      layerBars: readonly BarPlacement[],
+      getLayerHeight: (fullHeight: number, colourT: number) => number,
+      getLayerY: (baseHeight: number, layerHeight: number) => number,
+      getColourLevel: (bar: BarPlacement) => BucketLevel,
+    ) => {
+      if (!mesh) return;
+      layerBars.forEach((bar, i) => {
+        const revealT = Math.min(1, Math.max(0, resolveReveal(bar)));
+        const revealMul = springReveal(revealT);
+        const fullH = bar.height * revealMul;
+        const ct = revealColourProgress(revealT, getColourLevel(bar));
+        const baseH = fullH * (1 - ct);
+        const layerH = getLayerHeight(fullH, ct);
+        if (layerH < 1e-4) {
+          TEMP_OBJECT.position.set(bar.x, -1000, bar.z);
+          TEMP_OBJECT.scale.set(cellSize, 0.0001, cellSize);
+        } else {
+          TEMP_OBJECT.position.set(bar.x, getLayerY(baseH, layerH), bar.z);
+          TEMP_OBJECT.scale.set(cellSize, layerH, cellSize);
+        }
+        TEMP_OBJECT.rotation.set(0, 0, 0);
+        TEMP_OBJECT.updateMatrix();
+        mesh.setMatrixAt(i, TEMP_OBJECT.matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.frustumCulled = false;
+    };
 
-      // Per-instance colour: lerp grey → target level colour. The target is
-      // the bar's bucketed level; reveal drives the lerp progress.
-      const target = palette5[bar.level];
-      const ct = colourGrowT(revealT);
-      TEMP_COLOR_A.copy(grey);
-      TEMP_COLOR_B.copy(target);
-      TEMP_COLOR_OUT.copy(TEMP_COLOR_A).lerp(TEMP_COLOR_B, ct);
-      mesh.setColorAt(i, TEMP_COLOR_OUT);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    // Bounding sphere does not auto-update from matrix changes; disable
-    // frustum culling so the year never silently disappears when its
-    // hidden instances pull the bounding sphere to Y=-1000.
-    mesh.frustumCulled = false;
-  }, [bars, cellSize, resolveReveal, frame, palette5]);
+    applyMatrices(
+      baseRef.current,
+      bars,
+      (fullH, ct) => fullH * (1 - ct),
+      (_baseH, layerH) => layerH / 2,
+      (bar) => bar.level,
+    );
+    applyMatrices(
+      l1Ref.current,
+      l1,
+      (fullH, ct) => fullH * ct,
+      (baseH, layerH) => baseH + layerH / 2,
+      () => 1,
+    );
+    applyMatrices(
+      l2Ref.current,
+      l2,
+      (fullH, ct) => fullH * ct,
+      (baseH, layerH) => baseH + layerH / 2,
+      () => 2,
+    );
+    applyMatrices(
+      l3Ref.current,
+      l3,
+      (fullH, ct) => fullH * ct,
+      (baseH, layerH) => baseH + layerH / 2,
+      () => 3,
+    );
+    applyMatrices(
+      l4Ref.current,
+      l4,
+      (fullH, ct) => fullH * ct,
+      (baseH, layerH) => baseH + layerH / 2,
+      () => 4,
+    );
+  }, [bars, cellSize, frame, l1, l2, l3, l4, resolveReveal]);
 
   if (bars.length === 0) return null;
 
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[undefined, undefined, bars.length]}
-      castShadow
-      receiveShadow={false}
-      frustumCulled={false}
-    >
-      <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial
-        vertexColors
-        emissive={matSpec.emissive}
-        emissiveIntensity={matSpec.emissiveIntensity * 0.6}
-        roughness={matSpec.roughness}
-        metalness={matSpec.metalness}
-        transparent={opacity < 1}
-        opacity={opacity}
-        toneMapped
-      />
-    </instancedMesh>
+    <>
+      <instancedMesh
+        ref={baseRef}
+        args={[undefined, undefined, bars.length]}
+        castShadow
+        receiveShadow={false}
+        frustumCulled={false}
+      >
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial
+          color={baseMatSpec.color}
+          roughness={baseMatSpec.roughness}
+          metalness={baseMatSpec.metalness}
+          transparent={opacity < 1}
+          opacity={opacity}
+          toneMapped
+        />
+      </instancedMesh>
+
+      <instancedMesh
+        ref={l1Ref}
+        args={[undefined, undefined, l1.length]}
+        castShadow
+        receiveShadow={false}
+        frustumCulled={false}
+      >
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial
+          color={p.levels[1]}
+          emissive={l1Spec.emissive}
+          emissiveIntensity={l1Spec.emissiveIntensity}
+          roughness={l1Spec.roughness}
+          metalness={l1Spec.metalness}
+          transparent={opacity < 1}
+          opacity={opacity}
+          toneMapped
+        />
+      </instancedMesh>
+
+      <instancedMesh
+        ref={l2Ref}
+        args={[undefined, undefined, l2.length]}
+        castShadow
+        receiveShadow={false}
+        frustumCulled={false}
+      >
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial
+          color={p.levels[2]}
+          emissive={l2Spec.emissive}
+          emissiveIntensity={l2Spec.emissiveIntensity}
+          roughness={l2Spec.roughness}
+          metalness={l2Spec.metalness}
+          transparent={opacity < 1}
+          opacity={opacity}
+          toneMapped
+        />
+      </instancedMesh>
+
+      <instancedMesh
+        ref={l3Ref}
+        args={[undefined, undefined, l3.length]}
+        castShadow
+        receiveShadow={false}
+        frustumCulled={false}
+      >
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial
+          color={p.levels[3]}
+          emissive={l3Spec.emissive}
+          emissiveIntensity={l3Spec.emissiveIntensity}
+          roughness={l3Spec.roughness}
+          metalness={l3Spec.metalness}
+          transparent={opacity < 1}
+          opacity={opacity}
+          toneMapped
+        />
+      </instancedMesh>
+
+      <instancedMesh
+        ref={l4Ref}
+        args={[undefined, undefined, l4.length]}
+        castShadow
+        receiveShadow={false}
+        frustumCulled={false}
+      >
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial
+          color={p.levels[4]}
+          emissive={l4Spec.emissive}
+          emissiveIntensity={l4Spec.emissiveIntensity}
+          roughness={l4Spec.roughness}
+          metalness={l4Spec.metalness}
+          transparent={opacity < 1}
+          opacity={opacity}
+          toneMapped
+        />
+      </instancedMesh>
+    </>
   );
 };
 

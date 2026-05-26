@@ -108,7 +108,9 @@ const TOTAL = SKYLINE_YEAR_DURATION_FRAMES;
 
 // Z floor — camera never goes closer than this in Z so it doesn't clip into
 // bars (bars span Z ±3.45 with originZ=-3 and cellSize=0.9 → far edge ≈ 3.5).
-const Z_FLOOR = 4.2;
+// 13.5 keeps the camera ~10 units from bar faces — cinematic "street-level"
+// without going inside the geometry.
+const Z_FLOOR = 13.5;
 
 // Bar build-in: how far ahead of the camera the wave extends, in world units.
 const BUILD_LEAD = 9;
@@ -229,6 +231,23 @@ function buildKeyframes(
   const span = (geom.weekCount - 1) * stride;
   const speedRemap = buildSpeedRemap(densityCurve);
 
+  // Compute the X-range of bars that actually have contributions so the cruise
+  // doesn't sweep through empty space when the year is partial (current year)
+  // or front-loaded. Falls back to the full span for empty years.
+  const activeXs = placements
+    .filter((p) => p.inYear && p.count > 0)
+    .map((p) => p.x);
+  const hasActive = activeXs.length > 0;
+  const firstActiveX = hasActive ? Math.min(...activeXs) : geom.originX;
+  const lastActiveX = hasActive ? Math.max(...activeXs) : geom.originX + span;
+  const midActiveX = (firstActiveX + lastActiveX) / 2;
+  // Cap cruise X at lastActiveX + 2 (a column of breathing room) so the camera
+  // never wanders past the data and reveals an empty plane.
+  const cruiseEndX = hasActive
+    ? Math.min(geom.originX + span, lastActiveX + 2)
+    : geom.originX + span;
+  const cruiseSpan = cruiseEndX - geom.originX;
+
   const k: CameraKeyframe[] = [];
 
   // -------------------- 0..75 Opening: empty grid → wave begins ------------
@@ -239,41 +258,46 @@ function buildKeyframes(
   const startCamX = geom.originX - BUILD_LEAD - 4;
   k.push({
     frame: 0,
-    position: [startCamX, 12, 11],
+    position: [startCamX, 12, 15],
     lookAt: [geom.originX + 4, 1.5, 0],
     fov: 44,
   });
   k.push({
     frame: TITLE_END,
-    position: [geom.originX - 2.5, 8, 9],
+    position: [geom.originX - 2.5, 8, 12],
     lookAt: [geom.originX + 5, 1.6, 0],
-    fov: 40,
+    fov: 42,
   });
 
   // -------------------- 75..180 Entry --------------------------------------
   k.push({
     frame: ENTRY_END,
-    position: [geom.originX - 1.5, 4.5, Z_FLOOR + 2.5],
+    position: [geom.originX - 1.5, 4.5, Z_FLOOR + 3.5],
     lookAt: [geom.originX + 4, 1.8, 0],
-    fov: 36,
+    fov: 39,
   });
 
   // -------------------- 180..600 Cruise with adaptive speed/density --------
   // Use the speed-remap so time spent in dense stretches > sparse stretches.
+  // Z and FOV "breathe" laterally (Y + density-driven dwell) rather than
+  // diving close (Z-zoom) — telephoto sweep reads more cinematic.
   const cruiseSamples = 16;
+  let smoothedDensity = 0;
   for (let i = 0; i <= cruiseSamples; i++) {
     const u = i / cruiseSamples;
     const t = lerpSpeedRemap(speedRemap, u);
-    const x = geom.originX + t * span;
-    const density = densityAt(densityCurve, x);
+    const x = geom.originX + t * cruiseSpan;
+    const rawDensity = densityAt(densityCurve, x);
+    const density = i === 0 ? rawDensity : smoothedDensity * 0.72 + rawDensity * 0.28;
+    smoothedDensity = density;
     const lift = peakLiftAtX(x, placements);
-    // Z: 8.5 sparse → Z_FLOOR dense.
-    const z = Math.max(Z_FLOOR, 8.5 - density * (8.5 - Z_FLOOR));
-    // Y: hug canopy + a touch above peak.
-    const y = Math.max(2.6, 2.8 + (lift - 2.4) * 0.55);
-    // FOV: 38° wide sparse → 26° telephoto dense.
-    const fov = 38 - density * 12;
-    const lookY = density > 0.4 ? 1.0 + density * 1.2 : 0.6;
+    // Z: wide for sparse, modestly tighter for dense — stay outside the bars.
+    const z = Math.max(Z_FLOOR, 19 - density * (19 - Z_FLOOR));
+    // Y: ride canopy height + clearance above peaks.
+    const y = Math.max(5.0, 5.4 + (lift - 2.4) * 0.45);
+    // FOV: 42° sparse → 38° dense (narrow window; no fish-eye proximity).
+    const fov = 42 - density * 4;
+    const lookY = density > 0.4 ? 1.2 + density * 1.0 : 0.8;
     const frame = ENTRY_END + Math.round(u * (CRUISE_END - ENTRY_END));
     k.push({
       frame,
@@ -289,38 +313,36 @@ function buildKeyframes(
   const peakY = Math.max(2.4, Math.min(peakLift * 0.55 + 1.0, 5.5));
 
   if (hasContent) {
+    // Two bridge keys only — let the Bezier easing do the deceleration work.
+    // Extra waypoints in 60 frames created a stutter; fewer yields a smooth
+    // cinematic pullback into the canyon.
+    const bridgeX = cruiseEndX + (px - cruiseEndX) * 0.5;
     k.push({
-      frame: CRUISE_END + 30,
-      position: [px - 7, peakY + 1.6, Z_FLOOR + 1.5],
-      lookAt: [px, peakY * 0.6, 0],
-      fov: 30,
+      frame: CRUISE_END + 20,
+      position: [bridgeX, 9.0, Z_FLOOR + 7.0],
+      lookAt: [px, 2.0, 0],
+      fov: 38,
     });
     k.push({
       frame: APPROACH_END,
-      position: [px - 3, peakY + 0.5, Z_FLOOR + 0.4],
+      position: [px - 4, peakY + 1.4, Z_FLOOR + 4.0],
       lookAt: [px, peakY * 0.55, 0],
-      fov: 26,
+      fov: 32,
     });
     // -------------------- 660..720 Canyon HOLD (near-stationary) -----------
     // 60-frame near-stationary moment — the climax. Camera barely drifts so
     // the highlight glow + caption can land.
     k.push({
-      frame: APPROACH_END + 25,
-      position: [px - 1.2, peakY + 0.3, Z_FLOOR + 0.2],
-      lookAt: [px + 0.8, peakY * 0.55, 0],
-      fov: 24,
-    });
-    k.push({
-      frame: APPROACH_END + 50,
-      position: [px + 0.4, peakY + 0.3, Z_FLOOR + 0.2],
-      lookAt: [px + 1.5, peakY * 0.55, 0],
-      fov: 24,
+      frame: APPROACH_END + 30,
+      position: [px - 0.8, peakY + 0.8, Z_FLOOR + 3.6],
+      lookAt: [px + 1.0, peakY * 0.55, 0],
+      fov: 30,
     });
     k.push({
       frame: CANYON_END,
-      position: [px + 2.2, peakY + 1.4, Z_FLOOR + 1.2],
+      position: [px + 2.0, peakY + 1.4, Z_FLOOR + 3.8],
       lookAt: [px + 1.5, peakY * 0.5, 0],
-      fov: 28,
+      fov: 32,
     });
   } else {
     // Empty year: glide gently — no climax, no canyon.
@@ -340,32 +362,43 @@ function buildKeyframes(
 
   // -------------------- 720..810 Emergence + wide reveal --------------------
   k.push({
+    frame: CANYON_END + 20,
+    position: [px + 4, peakY + 2.6, Z_FLOOR + 5.8],
+    lookAt: [px + 2, 1.8, 0],
+    fov: 34,
+  });
+  // Outro framing is centred on where the contributions ACTUALLY live, not
+  // grid-center. For a partial year (e.g. 2026 with weeks 0..18 populated) the
+  // active midpoint is well to the left of X=0, so chart-out at X=0 would
+  // squish the silhouette into the side of the frame.
+  k.push({
     frame: CANYON_END + 45,
-    position: [span * 0.25, 12, 16],
-    lookAt: [0, 1.8, 0],
+    position: [midActiveX, 12, 16],
+    lookAt: [midActiveX, 1.8, 0],
     fov: 38,
   });
   k.push({
     frame: EMERGE_END,
-    position: [span * 0.1, 11, 18],
-    lookAt: [0, 1.8, 0],
+    position: [midActiveX, 11, 18],
+    lookAt: [midActiveX, 1.8, 0],
     fov: 38,
   });
 
   // -------------------- 810..900 Chart-out (side profile) -------------------
   // The reveal: camera slides to a near-side pose so the year reads as a 1D
   // histogram silhouette. Y low, Z large, FOV tight (telephoto compresses the
-  // year into a chart-like ribbon).
+  // year into a chart-like ribbon). Centred on midActiveX so partial years
+  // sit in the middle of the frame instead of squished to one side.
   k.push({
     frame: EMERGE_END + 45,
-    position: [0, 4, 24],
-    lookAt: [0, 2, 0],
+    position: [midActiveX, 4, 24],
+    lookAt: [midActiveX, 2, 0],
     fov: 32,
   });
   k.push({
     frame: TOTAL,
-    position: [0, 2.5, 28],
-    lookAt: [0, 2, 0],
+    position: [midActiveX, 2.5, 28],
+    lookAt: [midActiveX, 2, 0],
     fov: 28,
   });
 

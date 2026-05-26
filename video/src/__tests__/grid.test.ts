@@ -88,8 +88,50 @@ describe("layoutBars", () => {
   it("buckets in-year days using local peak (not padding peak)", () => {
     const placements = layoutBars(makeYear());
     const jan1 = placements.find((p) => p.date === "2025-01-01")!;
-    // peakInYear=5, count=5 -> level 4
+    // 2025 non-zero thresholds for this fixture map count=5 to level 4.
     expect(jan1.level).toBe(4);
+  });
+
+  it("spreads active days across multiple levels for skewed years", () => {
+    const skewed: YearData = {
+      year: 2025,
+      totalContributions: 136,
+      weeks: [
+        {
+          weekIndex: 0,
+          startDate: "2024-12-29",
+          days: [
+            { date: "2025-01-01", count: 1, weekday: 3 },
+            { date: "2025-01-02", count: 2, weekday: 4 },
+            { date: "2025-01-03", count: 3, weekday: 5 },
+            { date: "2025-01-04", count: 4, weekday: 6 },
+            { date: "2024-12-29", count: 0, weekday: 0 },
+            { date: "2024-12-30", count: 0, weekday: 1 },
+            { date: "2024-12-31", count: 0, weekday: 2 },
+          ],
+        },
+        {
+          weekIndex: 1,
+          startDate: "2025-01-05",
+          days: [
+            { date: "2025-01-05", count: 5, weekday: 0 },
+            { date: "2025-01-06", count: 6, weekday: 1 },
+            { date: "2025-01-07", count: 7, weekday: 2 },
+            { date: "2025-01-08", count: 8, weekday: 3 },
+            { date: "2025-01-09", count: 100, weekday: 4 },
+            { date: "2025-01-10", count: 0, weekday: 5 },
+            { date: "2025-01-11", count: 0, weekday: 6 },
+          ],
+        },
+      ],
+      stats: null,
+    };
+    const levels = new Set(
+      layoutBars(skewed)
+        .filter((p) => p.inYear && p.count > 0)
+        .map((p) => p.level),
+    );
+    expect(levels).toEqual(new Set([1, 2, 3, 4]));
   });
 });
 

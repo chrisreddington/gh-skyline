@@ -34,14 +34,6 @@ function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-function lerp3(
-  a: [number, number, number],
-  b: [number, number, number],
-  t: number,
-): [number, number, number] {
-  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-}
-
 function add3(
   a: [number, number, number],
   b: [number, number, number],
@@ -76,6 +68,22 @@ function bezier3(
   const c = scale3(p2, 3 * u * t * t);
   const d = scale3(p3, t * t * t);
   return add3(add3(a, b), add3(c, d));
+}
+
+function catmullRom1D(
+  p0: number,
+  p1: number,
+  p2: number,
+  p3: number,
+  t: number,
+): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 *
+    ((2 * p1) +
+      (-p0 + p2) * t +
+      (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+      (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
 }
 
 /**
@@ -113,14 +121,24 @@ export function sampleRig(frame: number, keyframes: CameraKeyframe[]): RigSample
   const next = i + 2 < keyframes.length && !keyframes[i + 2].cut
     ? keyframes[i + 2]
     : b;
-  const tangentIn = scale3(sub3(b.position, prev.position), 0.18);
-  const tangentOut = scale3(sub3(next.position, a.position), 0.18);
-  const c1 = add3(a.position, tangentIn);
-  const c2 = sub3(b.position, tangentOut);
+  const posTangentIn = scale3(sub3(b.position, prev.position), 0.12);
+  const posTangentOut = scale3(sub3(next.position, a.position), 0.12);
+  const posC1 = add3(a.position, posTangentIn);
+  const posC2 = sub3(b.position, posTangentOut);
+
+  const lookTangentIn = scale3(sub3(b.lookAt, prev.lookAt), 0.08);
+  const lookTangentOut = scale3(sub3(next.lookAt, a.lookAt), 0.08);
+  const lookC1 = add3(a.lookAt, lookTangentIn);
+  const lookC2 = sub3(b.lookAt, lookTangentOut);
+
+  const fovA = a.fov ?? DEFAULT_FOV;
+  const fovB = b.fov ?? DEFAULT_FOV;
+  const fovPrev = prev.fov ?? fovA;
+  const fovNext = next.fov ?? fovB;
   return {
-    position: bezier3(a.position, c1, c2, b.position, eased),
-    lookAt: lerp3(a.lookAt, b.lookAt, eased),
-    fov: (a.fov ?? DEFAULT_FOV) + ((b.fov ?? DEFAULT_FOV) - (a.fov ?? DEFAULT_FOV)) * eased,
+    position: bezier3(a.position, posC1, posC2, b.position, eased),
+    lookAt: bezier3(a.lookAt, lookC1, lookC2, b.lookAt, eased),
+    fov: catmullRom1D(fovPrev, fovA, fovB, fovNext, eased),
   };
 }
 
@@ -136,19 +154,19 @@ export function peakLiftAtX(
   clearance = 1.8,
   maxLift = 6,
 ): number {
-  // Find weeks within roughly windowSize cells of x. Cell stride ~1.0 so
-  // simple Euclidean distance is fine.
-  const samples: number[] = [];
+  const weightedHeights: number[] = [];
   for (const p of placements) {
     if (!p.inYear) continue;
     const dx = Math.abs(p.x - x);
-    if (dx <= windowSize) samples.push(p.height);
+    if (dx > windowSize) continue;
+    const w = 1 - dx / Math.max(windowSize, 1e-6);
+    weightedHeights.push(p.height * w);
   }
-  if (samples.length === 0) return 0;
-  // Use the max within the window (we care about avoiding the tallest peak)
-  // then smooth slightly with a 3-tap average against neighbour-weeks' maxes.
-  const max = Math.max(...samples);
-  return Math.min(maxLift, max + clearance);
+  if (weightedHeights.length === 0) return 0;
+  weightedHeights.sort((a, b) => b - a);
+  const top = weightedHeights.slice(0, Math.min(3, weightedHeights.length));
+  const mean = top.reduce((sum, h) => sum + h, 0) / top.length;
+  return Math.min(maxLift, mean + clearance);
 }
 
 /**

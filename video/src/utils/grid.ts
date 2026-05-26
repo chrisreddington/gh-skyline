@@ -34,7 +34,7 @@ export interface GridGeometry {
   readonly weekCount: number;
 }
 
-import { bucketLevel } from "../scene/theme";
+import { bucketLevel, buildLevelThresholds } from "../scene/theme";
 
 const DEFAULT_CELL = 0.9;
 const DEFAULT_GAP = 0.1;
@@ -104,6 +104,12 @@ export function layoutBars(year: YearData): BarPlacement[] {
   const peak = peakCountInYear(year);
   const geom = gridGeometry(year);
   const stride = geom.cellSize + geom.gap;
+  const inYearActiveCounts = year.weeks.flatMap((w) =>
+    w.days
+      .filter((d) => isInYear(d.date, year.year) && d.count > 0)
+      .map((d) => d.count)
+  );
+  const thresholds = buildLevelThresholds(inYearActiveCounts);
   const placements: BarPlacement[] = [];
 
   for (let wi = 0; wi < year.weeks.length; wi++) {
@@ -122,7 +128,7 @@ export function layoutBars(year: YearData): BarPlacement[] {
         // Invert Z so Sunday (weekday=0) sits at the back of the grid.
         z: geom.originZ + (DAYS_PER_WEEK - 1 - weekday) * stride,
         height: barHeight(count, peak),
-        level: bucketLevel(count, peak),
+        level: bucketLevel(count, thresholds),
         count,
         inYear,
         date: day?.date ?? null,
