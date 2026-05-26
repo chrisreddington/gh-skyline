@@ -19,11 +19,17 @@ import {
   calculateSkylineFullMetadata,
   SKYLINE_FULL_FPS,
 } from "./compositions/SkylineFull";
+import {
+  SkylineHeroCard,
+  skylineHeroCardPropsSchema,
+  calculateSkylineHeroCardMetadata,
+} from "./compositions/SkylineHeroCard";
 
 import sampleYear from "../fixtures/sample-year.json";
 import sampleFull from "../fixtures/sample-full.json";
 
 import type { YearData, SkylineDocument } from "./schema";
+import { MonaSansFontFaces } from "./scene/typography";
 
 const sampleYearDoc = sampleYear as unknown as SkylineDocument;
 const sampleFullDoc = sampleFull as unknown as SkylineDocument;
@@ -45,6 +51,7 @@ const heroUsername = sampleFullDoc?.username ?? sampleYearDoc.username;
 export const Root: React.FC = () => {
   return (
     <>
+      <MonaSansFontFaces />
       <Composition
         id="SkylineYear"
         component={SkylineYear}
@@ -75,6 +82,20 @@ export const Root: React.FC = () => {
           theme: "dark" as const,
           resolution: "1080p" as const,
           maxDurationSeconds: 180,
+        }}
+      />
+      <Composition
+        id="SkylineHeroCard"
+        component={SkylineHeroCard}
+        schema={skylineHeroCardPropsSchema}
+        fps={30}
+        durationInFrames={1}
+        width={1200}
+        height={630}
+        calculateMetadata={calculateSkylineHeroCardMetadata}
+        defaultProps={{
+          data: sampleFullDoc,
+          theme: "dark" as const,
         }}
       />
     </>

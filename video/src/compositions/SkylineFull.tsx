@@ -1,30 +1,8 @@
 /**
- * SkylineFull: continuous fly-through of a developer's entire history.
- *
- * Unlike v2 (which cross-faded year meshes at origin), v3 lays every year
- * side-by-side in world space along +X. The camera physically flies along
- * the X axis across the entire history — there is one continuous flight from
- * year-zero to the present. Each year gets its own micro-arc within the
- * flight: descend, canyon-pass through that year's peak week, rise, continue
- * forward into the next year.
- *
- * Final outro pulls the camera way back along Z and dolly-out so the entire
- * history reads as a panoramic chart silhouette — a 15-year cardiogram.
- *
- * Adaptive year allocation: per-year segment frames are weighted by
- * sqrt(totalContributions). Quiet years still get at least 3s; mega-years
- * are capped at 18s so a single climax year can't dominate.
- *
- * Story for any developer:
- *   - Always-active dev: weights are all similar → uniform pacing, all years
- *     get strong representation.
- *   - Bursty dev: weights cluster around mega-years → quiet stretches whip
- *     past, big years get linger.
- *   - New dev (1-2 years): falls through to SkylineYear logic at the
- *     composition picker; SkylineFull still works for ≥ 2 years.
- *   - Quiet years: still rendered, get min duration, captioned honestly.
+ * Full-history Remotion composition: one continuous Z-stacked skyline object
+ * with data-driven chapters and the final "Your skyline" CTA.
  */
-import React, { useMemo } from "react";
+import React, { useLayoutEffect, useMemo } from "react";
 import * as THREE from "three";
 import {
   AbsoluteFill,
@@ -34,32 +12,36 @@ import {
   type CalculateMetadataFunction,
 } from "remotion";
 import { ThreeCanvas } from "@remotion/three";
+import { Text } from "@react-three/drei";
+import { useThree } from "@react-three/fiber";
 import { z } from "zod";
 
 import {
   documentSchema,
-  themeSchema,
   resolutionSchema,
+  themeSchema,
   type SkylineDocument,
-  type YearData,
+  type Theme,
 } from "../schema";
-import { palette } from "../scene/theme";
-import { Skyline } from "../scene/Skyline";
-import { Lighting } from "../scene/Lighting";
+import { CameraRig, sampleRig } from "../scene/CameraRig";
 import { Captions } from "../scene/Captions";
-import {
-  CameraRig,
-  sampleRig,
-  peakLiftAtX,
-  type CameraKeyframe,
-} from "../scene/CameraRig";
-import {
-  layoutBars,
-  placementsForWeekStart,
-  placementForDate,
-  gridGeometry,
-} from "../utils/grid";
+import { Lighting } from "../scene/Lighting";
+import { Skyline } from "../scene/Skyline";
+import { palette } from "../scene/theme";
+import { MONA_SANS_FONT_FAMILY, MONA_SANS_MEDIUM } from "../scene/typography";
+import { gridGeometry } from "../utils/grid";
 import { allocate, DEFAULT_TIMING, type Allocation } from "../utils/timing";
+import {
+  buildAllKeyframes,
+  buildYearConfigs,
+  computeWeights,
+  firstContributionYear,
+  revealCameraX,
+  totalContributions,
+  yearDepthOffsets,
+  yearRange,
+  type YearCameraConfig,
+} from "./fullLayout";
 
 export const skylineFullPropsSchema = z.object({
   data: documentSchema,
@@ -72,230 +54,29 @@ export type SkylineFullProps = z.infer<typeof skylineFullPropsSchema>;
 
 export const SKYLINE_FULL_FPS = 30;
 
-const Z_FLOOR = 4.2;
-const YEAR_GAP_UNITS = 8; // gap between adjacent years along X
-const BUILD_LEAD = 9;
-
-/**
- * Compute the world-X offset for each year in the document. Year 0 is anchored
- * so that the *first* week of year 0 sits at world X=0, growing positive.
- */
-function yearOffsets(doc: SkylineDocument): number[] {
-  const offsets: number[] = [];
-  let cursor = 0;
-  for (const year of doc.years) {
-    const geom = gridGeometry(year);
-    const stride = geom.cellSize + geom.gap;
-    const yearWidth = (geom.weekCount - 1) * stride;
-    // Year's local X spans [originX, originX + yearWidth]. originX is negative
-    // (centred), so the year's left edge sits at originX. To place its left
-    // edge at world X=cursor we offset by (cursor - originX).
-    const offset = cursor - geom.originX;
-    offsets.push(offset);
-    cursor += yearWidth + YEAR_GAP_UNITS;
-  }
-  return offsets;
-}
-
-/** sqrt-scaled weights: keeps quiet years visible while still favouring busy ones. */
-function computeWeights(doc: SkylineDocument): number[] {
-  return doc.years.map((y) => Math.sqrt(y.totalContributions + 1));
-}
-
-interface YearCameraConfig {
-  yearIdx: number;
-  worldOffset: number;
-  startFrame: number;
-  segmentFrames: number;
-  /** Local X (relative to year) of the canyon target, or 0 if none. */
-  canyonLocalX: number;
-  /** Whether this year has a real peak worth diving for. */
-  hasCanyon: boolean;
-  /** Peak Y lift at the canyon target (for camera height). */
-  peakY: number;
-  /** Year width in world units. */
-  width: number;
-}
-
-function buildYearConfigs(
-  doc: SkylineDocument,
-  alloc: Allocation,
-  offsets: number[],
-): YearCameraConfig[] {
-  return alloc.perYear.map((seg) => {
-    const year = doc.years[seg.index];
-    const placements = layoutBars(year);
-    const geom = gridGeometry(year);
-    const stride = geom.cellSize + geom.gap;
-    const width = (geom.weekCount - 1) * stride;
-    let canyonLocalX = 0;
-    let hasCanyon = false;
-    let peakY = 2.4;
-    const s = year.stats;
-    if (year.totalContributions > 0 && s) {
-      if (s.peakWeek) {
-        const bars = placementsForWeekStart(placements, s.peakWeek.startDate);
-        if (bars.length > 0) {
-          canyonLocalX = bars[0].x;
-          hasCanyon = true;
-        }
-      } else if (s.peakDay) {
-        const bar = placementForDate(placements, s.peakDay.date);
-        if (bar) {
-          canyonLocalX = bar.x;
-          hasCanyon = true;
-        }
-      }
-      if (hasCanyon) {
-        const lift = peakLiftAtX(canyonLocalX, placements);
-        peakY = Math.max(2.4, Math.min(lift * 0.55 + 1.0, 5.5));
-      }
-    }
-    return {
-      yearIdx: seg.index,
-      worldOffset: offsets[seg.index],
-      startFrame: seg.startFrame,
-      segmentFrames: seg.segmentFrames,
-      canyonLocalX,
-      hasCanyon,
-      peakY,
-      width,
-    };
-  });
-}
-
-/**
- * Build the continuous camera path through all years + intro/outro.
- *
- * Intro: overhead shot looking down the X axis, the whole history visible
- *        in soft focus, slow descent to year-0 canopy.
- * Per-year: enter from west (low X) at canopy, drop into year, dive into
- *           that year's peak week (if it has one), rise out the east side,
- *           continue smoothly forward.
- * Outro: hard pull back to side-profile pose framing the entire history as
- *        a panoramic chart.
- */
-function buildAllKeyframes(
-  doc: SkylineDocument,
-  alloc: Allocation,
-  configs: YearCameraConfig[],
-): CameraKeyframe[] {
-  const k: CameraKeyframe[] = [];
-  const last = configs[configs.length - 1];
-  const first = configs[0];
-  const firstCenter = first.worldOffset + first.width / 2;
-
-  // -------------------- Intro -----------------------------------------------
-  // Open over year 0 — where the "first brick" was laid. This grounds the
-  // opening in the user's start, not an abstract panorama.
-  k.push({
-    frame: 0,
-    position: [firstCenter, 24, 18],
-    lookAt: [firstCenter, 0, 0],
-    fov: 38,
-  });
-  // Descend toward year-0's entry pose by intro's end.
-  k.push({
-    frame: alloc.introFrames,
-    position: [first.worldOffset - 6, 8, 11],
-    lookAt: [first.worldOffset + 4, 1.5, 0],
-    fov: 38,
-  });
-
-  // -------------------- Per-year arcs ---------------------------------------
-  for (const cfg of configs) {
-    const year = doc.years[cfg.yearIdx];
-    const yearWorldX = (lx: number) => cfg.worldOffset + lx;
-    const segEnd = cfg.startFrame + cfg.segmentFrames;
-    // Approach the year — first third of segment.
-    k.push({
-      frame: cfg.startFrame + Math.floor(cfg.segmentFrames * 0.05),
-      position: [yearWorldX(-1.5), 4.5, Z_FLOOR + 2.5],
-      lookAt: [yearWorldX(4), 1.8, 0],
-      fov: 36,
-    });
-    if (cfg.hasCanyon && year.totalContributions > 0) {
-      // Canyon entry — into the peak week of THIS year.
-      k.push({
-        frame: cfg.startFrame + Math.floor(cfg.segmentFrames * 0.45),
-        position: [
-          yearWorldX(cfg.canyonLocalX - 3),
-          cfg.peakY + 0.5,
-          Z_FLOOR + 0.4,
-        ],
-        lookAt: [yearWorldX(cfg.canyonLocalX), cfg.peakY * 0.55, 0],
-        fov: 26,
-      });
-      // Canyon hold — small dwell at peak, scaled by segment length.
-      const holdLen = Math.max(4, Math.floor(cfg.segmentFrames * 0.18));
-      const holdStart = cfg.startFrame + Math.floor(cfg.segmentFrames * 0.55);
-      k.push({
-        frame: holdStart,
-        position: [
-          yearWorldX(cfg.canyonLocalX - 0.5),
-          cfg.peakY + 0.3,
-          Z_FLOOR + 0.2,
-        ],
-        lookAt: [yearWorldX(cfg.canyonLocalX + 1), cfg.peakY * 0.55, 0],
-        fov: 24,
-      });
-      k.push({
-        frame: holdStart + holdLen,
-        position: [
-          yearWorldX(cfg.canyonLocalX + 1),
-          cfg.peakY + 0.3,
-          Z_FLOOR + 0.2,
-        ],
-        lookAt: [yearWorldX(cfg.canyonLocalX + 2.5), cfg.peakY * 0.55, 0],
-        fov: 24,
-      });
-    } else {
-      // Quiet year: glide over without canyon.
-      k.push({
-        frame: cfg.startFrame + Math.floor(cfg.segmentFrames * 0.5),
-        position: [yearWorldX(cfg.width * 0.4), 6, 10],
-        lookAt: [yearWorldX(cfg.width * 0.5), 1.2, 0],
-        fov: 38,
-      });
-    }
-    // Exit — rise and continue forward to set up next year.
-    k.push({
-      frame: segEnd,
-      position: [yearWorldX(cfg.width + 1), 6, Z_FLOOR + 3],
-      lookAt: [yearWorldX(cfg.width + 5), 1.5, 0],
-      fov: 34,
-    });
-  }
-
-  // -------------------- Outro (panoramic side-profile pan) -----------------
+function cinemaState(frame: number, alloc: Allocation, configs: readonly YearCameraConfig[]) {
   const outroStart = alloc.totalFrames - alloc.outroFrames;
-  const lastCenter = last.worldOffset + last.width / 2;
-  const panDistance = lastCenter - firstCenter;
-  // First a fast pull-back from the last year's exit pose to side-profile.
-  k.push({
-    frame: outroStart,
-    position: [lastCenter, 9, 18],
-    lookAt: [lastCenter, 2.5, 0],
-    fov: 32,
-  });
-  // Then dolly LEFT across the entire history, ending framed on year 0.
-  // Reverse-chronological reveal: we end where it started, the "first brick".
-  k.push({
-    frame: outroStart + Math.floor(alloc.outroFrames * 0.6),
-    position: [firstCenter + panDistance * 0.5, 7, 16],
-    lookAt: [firstCenter + panDistance * 0.5, 2.5, 0],
-    fov: 30,
-  });
-  k.push({
-    frame: alloc.totalFrames,
-    position: [firstCenter, 6, 14],
-    lookAt: [firstCenter, 2.5, 0],
-    fov: 28,
-  });
-
-  k.sort((a, b) => a.frame - b.frame);
-  return k;
+  if (frame >= outroStart) return { fog: 0.005, ambient: 0.3, rim: 0.2 };
+  const active = configs.find(
+    (cfg) => frame >= cfg.startFrame && frame <= cfg.startFrame + cfg.segmentFrames,
+  );
+  if (!active) return { fog: 0.005, ambient: 0.3, rim: 0.2 };
+  if (active.isClimax) return { fog: 0.015, ambient: 0.2, rim: 0.34 };
+  if (!active.hasCanyon) return { fog: 0.007, ambient: 0.28, rim: 0.18 };
+  return { fog: 0.008, ambient: 0.25, rim: 0.24 };
 }
+
+const DynamicFog: React.FC<{ color: string; density: number }> = ({ color, density }) => {
+  const { scene } = useThree();
+  useLayoutEffect(() => {
+    if (!(scene.fog instanceof THREE.FogExp2)) scene.fog = new THREE.FogExp2(color, density);
+    else {
+      scene.fog.color.set(color);
+      scene.fog.density = density;
+    }
+  }, [color, density, scene]);
+  return null;
+};
 
 export const calculateSkylineFullMetadata: CalculateMetadataFunction<
   SkylineFullProps
@@ -303,23 +84,14 @@ export const calculateSkylineFullMetadata: CalculateMetadataFunction<
   const dims = props.resolution === "1080p"
     ? { width: 1920, height: 1080 }
     : { width: 3840, height: 2160 };
-  const yearCount = props.data.years.length;
-  if (yearCount === 0) {
-    throw new Error("SkylineFull: data.years is empty");
-  }
-  const weights = computeWeights(props.data);
+  if (props.data.years.length === 0) throw new Error("SkylineFull: data.years is empty");
   const alloc = allocate(
-    yearCount,
+    props.data.years.length,
     props.maxDurationSeconds,
     DEFAULT_TIMING,
-    weights,
+    computeWeights(props.data),
   );
-  return {
-    ...dims,
-    fps: SKYLINE_FULL_FPS,
-    durationInFrames: alloc.totalFrames,
-    props,
-  };
+  return { ...dims, fps: SKYLINE_FULL_FPS, durationInFrames: alloc.totalFrames, props };
 };
 
 export const SkylineFull: React.FC<SkylineFullProps> = ({
@@ -330,48 +102,21 @@ export const SkylineFull: React.FC<SkylineFullProps> = ({
 }) => {
   const { width, height } = useVideoConfig();
   const frame = useCurrentFrame();
+  const p = palette(theme);
   const weights = useMemo(() => computeWeights(data), [data]);
   const alloc = useMemo(
     () => allocate(data.years.length, maxDurationSeconds, DEFAULT_TIMING, weights),
     [data.years.length, maxDurationSeconds, weights],
   );
-  const offsets = useMemo(() => yearOffsets(data), [data]);
-  const configs = useMemo(
-    () => buildYearConfigs(data, alloc, offsets),
-    [data, alloc, offsets],
-  );
-  const keyframes = useMemo(
-    () => buildAllKeyframes(data, alloc, configs),
-    [data, alloc, configs],
-  );
-  const p = palette(theme);
-  const cameraX = useMemo(
-    () => sampleRig(frame, keyframes).position[0],
-    [frame, keyframes],
-  );
-  const totalContrib = useMemo(
-    () => data.years.reduce((s, y) => s + y.totalContributions, 0),
-    [data.years],
-  );
-  const yearRange = useMemo(() => {
-    const ys = data.years.map((y) => y.year);
-    const min = Math.min(...ys);
-    const max = Math.max(...ys);
-    return min === max ? String(min) : `${min} → ${max}`;
-  }, [data.years]);
-  const firstContribDate = useMemo(() => {
-    for (const y of data.years) {
-      if (y.stats?.firstContribution) return y.stats.firstContribution.date;
-    }
-    return null;
-  }, [data.years]);
-  const biggestYear = useMemo(() => {
-    let best: YearData | null = null;
-    for (const y of data.years) {
-      if (!best || y.totalContributions > best.totalContributions) best = y;
-    }
-    return best;
-  }, [data.years]);
+  const offsets = useMemo(() => yearDepthOffsets(data), [data]);
+  const configs = useMemo(() => buildYearConfigs(data, alloc, offsets), [alloc, data, offsets]);
+  const keyframes = useMemo(() => buildAllKeyframes(alloc, configs), [alloc, configs]);
+  const sampledRig = useMemo(() => sampleRig(frame, keyframes), [frame, keyframes]);
+  const state = cinemaState(frame, alloc, configs);
+  const total = useMemo(() => totalContributions(data), [data]);
+  const range = useMemo(() => yearRange(data), [data]);
+  const firstYear = useMemo(() => firstContributionYear(data), [data]);
+  const base = useMemo(() => baseDimensions(data), [data]);
 
   return (
     <AbsoluteFill style={{ backgroundColor: p.background }}>
@@ -381,209 +126,178 @@ export const SkylineFull: React.FC<SkylineFullProps> = ({
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.2,
+          toneMappingExposure: 1.14,
           outputColorSpace: THREE.SRGBColorSpace,
         }}
         style={{ backgroundColor: p.background }}
       >
-        {/* Lighter fog so distant years still read in the panoramic shots. */}
-        <fogExp2 attach="fog" args={[p.background, 0.008]} />
-        <Lighting theme={theme} />
+        <DynamicFog color={p.background} density={state.fog} />
+        <Lighting theme={theme} ambientIntensity={state.ambient} rimIntensity={state.rim} />
         <CameraRig keyframes={keyframes} />
-        {data.years.map((year, idx) => (
-          <group key={`year-${idx}`} position={[offsets[idx], 0, 0]}>
-            <Skyline
-              year={year}
-              theme={theme}
-              cameraX={cameraX - offsets[idx]}
-              buildLeadDistance={BUILD_LEAD}
-              showLabel={false}
-            />
-          </group>
-        ))}
+        <SharedBaseplate username={data.username} range={range} theme={theme} {...base} />
+        {data.years.map((year, idx) => {
+          const cfg = configs.find((c) => c.yearIdx === idx);
+          return (
+            <group key={year.year} position={[0, 0, offsets[idx]]}>
+              <Skyline
+                year={year}
+                theme={theme}
+                cameraX={cfg ? revealCameraX(frame, cfg) : sampledRig.position[0]}
+                buildLeadDistance={9}
+                showLabel={false}
+                showBaseplate={false}
+              />
+            </group>
+          );
+        })}
       </ThreeCanvas>
-
-      {/* Intro card. */}
-      <Captions
-        theme={theme}
-        visibleFromFrame={0}
-        visibleToFrame={alloc.introFrames - 5}
-        placement="center"
-        fadeFrames={18}
-      >
-        <div style={{ fontSize: 88, fontWeight: 700 }}>{data.username}</div>
-        <div style={{ fontSize: 56, marginTop: 16, opacity: 0.9 }}>
-          {yearRange}
-        </div>
-        <div style={{ fontSize: 44, marginTop: 8, opacity: 0.8 }}>
-          {totalContrib.toLocaleString()} contributions
-        </div>
-      </Captions>
-
-      {/* Per-year label — appears briefly at each year's start. */}
-      <PerYearLabel alloc={alloc} doc={data} theme={theme} />
-
-      {/* Outro panoramic chart card. */}
+      <IntroCard data={data} total={total} range={range} theme={theme} to={alloc.introFrames + 30} />
+      <ChapterCaption configs={configs} theme={theme} />
       <PanoramicOutro
-        fromFrame={alloc.totalFrames - alloc.outroFrames + 20}
-        toFrame={alloc.totalFrames}
+        from={alloc.totalFrames - alloc.outroFrames + 60}
+        to={alloc.totalFrames}
         username={data.username}
-        yearRange={yearRange}
-        total={totalContrib}
-        firstContribDate={firstContribDate}
-        biggestYear={biggestYear}
+        firstYear={firstYear}
+        total={total}
+        range={range}
         theme={theme}
       />
     </AbsoluteFill>
   );
 };
 
-const PerYearLabel: React.FC<{
-  alloc: Allocation;
-  doc: SkylineDocument;
-  theme: SkylineFullProps["theme"];
-}> = ({ alloc, doc, theme }) => {
-  const frame = useCurrentFrame();
+function baseDimensions(doc: SkylineDocument) {
+  const offsets = yearDepthOffsets(doc);
+  const geom = gridGeometry(doc.years[0]);
+  const stride = geom.cellSize + geom.gap;
+  const maxWeeks = Math.max(...doc.years.map((year) => gridGeometry(year).weekCount));
+  const firstZ = Math.min(...offsets) - 3.5 * stride - 1.2;
+  const lastZ = Math.max(...offsets) + 3.5 * stride + 1.2;
+  return {
+    width: (maxWeeks + 1) * stride + 2.4,
+    depth: lastZ - firstZ,
+    centerZ: (firstZ + lastZ) / 2,
+    frontZ: firstZ,
+  };
+}
+
+const SharedBaseplate: React.FC<{
+  username: string;
+  range: string;
+  theme: Theme;
+  width: number;
+  depth: number;
+  centerZ: number;
+  frontZ: number;
+}> = ({ username, range, theme, width, depth, centerZ, frontZ }) => {
   const p = palette(theme);
-  // Identify which year is currently active.
-  let active: { year: YearData; seg: typeof alloc.perYear[number] } | null = null;
-  for (const seg of alloc.perYear) {
-    const end = seg.startFrame + seg.segmentFrames;
-    if (frame >= seg.startFrame && frame < end) {
-      active = { year: doc.years[seg.index], seg };
-      break;
-    }
-  }
-  if (!active) return null;
-  const { year, seg } = active;
-  // Show label for the first 25% of each segment.
-  const labelEnd = seg.startFrame + Math.floor(seg.segmentFrames * 0.35);
-  const opacity = interpolate(
-    frame,
-    [seg.startFrame, seg.startFrame + 8, labelEnd - 15, labelEnd],
-    [0, 0.85, 0.85, 0],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
-  if (opacity <= 0) return null;
   return (
-    <AbsoluteFill
-      style={{
-        justifyContent: "flex-start",
-        alignItems: "flex-start",
-        padding: 80,
-        paddingTop: 100,
-        pointerEvents: "none",
-        opacity,
-      }}
-    >
-      <div
-        style={{
-          color: p.captionText,
-          textShadow: `0 2px 12px ${p.captionShadow}`,
-          fontFamily:
-            'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-        }}
+    <group>
+      <mesh position={[0, -0.1, centerZ]} receiveShadow>
+        <boxGeometry args={[width, 0.2, depth]} />
+        <meshStandardMaterial
+          color={theme === "dark" ? "#10161f" : "#d0d7de"}
+          roughness={0.86}
+        />
+      </mesh>
+      <Text
+        position={[-width / 2 + 1.3, 0.08, frontZ - 0.25]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.62}
+        font={MONA_SANS_MEDIUM}
+        color={p.captionText}
+        anchorX="left"
+        anchorY="middle"
       >
-        <div style={{ fontSize: 120, fontWeight: 700, lineHeight: 1 }}>
-          {year.year}
-        </div>
-        <div style={{ fontSize: 38, marginTop: 8, opacity: 0.85 }}>
-          {year.totalContributions.toLocaleString()} contribution
-          {year.totalContributions === 1 ? "" : "s"}
-        </div>
-      </div>
-    </AbsoluteFill>
+        @{username.replace(/^@/, "")}
+      </Text>
+      <Text
+        position={[width / 2 - 1.3, 0.08, frontZ - 0.25]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.54}
+        font={MONA_SANS_MEDIUM}
+        color={p.captionText}
+        anchorX="right"
+        anchorY="middle"
+      >
+        {range}
+      </Text>
+    </group>
+  );
+};
+
+const IntroCard: React.FC<{
+  data: SkylineDocument;
+  total: number;
+  range: string;
+  theme: Theme;
+  to: number;
+}> = ({ data, total, range, theme, to }) => (
+  <Captions theme={theme} visibleFromFrame={45} visibleToFrame={to} placement="center">
+    <div style={{ fontSize: 86, fontWeight: 700 }}>@{data.username.replace(/^@/, "")}</div>
+    <div style={{ fontSize: 54, marginTop: 14, opacity: 0.88 }}>{range}</div>
+    <div style={{ fontSize: 42, marginTop: 8, opacity: 0.78 }}>
+      {total.toLocaleString()} contribution{total === 1 ? "" : "s"}
+    </div>
+  </Captions>
+);
+
+const ChapterCaption: React.FC<{ configs: readonly YearCameraConfig[]; theme: Theme }> = ({
+  configs,
+  theme,
+}) => {
+  const frame = useCurrentFrame();
+  const active = configs.find((cfg) => {
+    const start = cfg.startFrame + Math.floor(cfg.segmentFrames * 0.38);
+    const end = cfg.startFrame + Math.floor(cfg.segmentFrames * 0.7);
+    return cfg.caption && frame >= start && frame <= end;
+  });
+  if (!active?.caption) return null;
+  const start = active.startFrame + Math.floor(active.segmentFrames * 0.38);
+  const end = active.startFrame + Math.floor(active.segmentFrames * 0.7);
+  return (
+    <Captions theme={theme} visibleFromFrame={start} visibleToFrame={end} placement="bottom">
+      {active.caption}
+    </Captions>
   );
 };
 
 const PanoramicOutro: React.FC<{
-  fromFrame: number;
-  toFrame: number;
+  from: number;
+  to: number;
   username: string;
-  yearRange: string;
+  firstYear: number | null;
   total: number;
-  firstContribDate: string | null;
-  biggestYear: YearData | null;
-  theme: SkylineFullProps["theme"];
-}> = ({
-  fromFrame,
-  toFrame,
-  username,
-  yearRange,
-  total,
-  firstContribDate,
-  biggestYear,
-  theme,
-}) => {
+  range: string;
+  theme: Theme;
+}> = ({ from, to, username, firstYear, total, range, theme }) => {
   const frame = useCurrentFrame();
   const p = palette(theme);
-  const opacity = interpolate(
-    frame,
-    [fromFrame, fromFrame + 25, toFrame - 5, toFrame],
-    [0, 1, 1, 1],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
+  const opacity = interpolate(frame, [from, from + 30, to - 5, to], [0, 1, 1, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
   if (opacity <= 0) return null;
   return (
     <AbsoluteFill
-      style={{
-        justifyContent: "flex-start",
-        alignItems: "center",
-        padding: 80,
-        pointerEvents: "none",
-        opacity,
-      }}
+      style={{ justifyContent: "center", alignItems: "center", padding: "8%", opacity }}
     >
       <div
         style={{
           color: p.captionText,
-          textShadow: `0 2px 12px ${p.captionShadow}`,
-          fontFamily:
-            'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+          textShadow: `0 2px 18px ${p.captionShadow}`,
+          fontFamily: `"${MONA_SANS_FONT_FAMILY}", ui-sans-serif, system-ui, sans-serif`,
           textAlign: "center",
         }}
       >
-        <div
-          style={{
-            fontSize: 28,
-            opacity: 0.7,
-            letterSpacing: 4,
-            textTransform: "uppercase",
-          }}
-        >
-          {username}
+        <div style={{ fontSize: 34, opacity: 0.72, letterSpacing: 5 }}>
+          {firstYear ? `Committed since ${firstYear}.` : range}
         </div>
-        <div style={{ fontSize: 88, fontWeight: 700, marginTop: 8 }}>
-          {yearRange}
+        <div style={{ fontSize: 92, fontWeight: 760, marginTop: 12 }}>
+          {total.toLocaleString()} contributions. Your skyline.
         </div>
-        <div style={{ fontSize: 52, marginTop: 8, opacity: 0.9 }}>
-          {total.toLocaleString()} contributions
-        </div>
-        <div
-          style={{
-            display: "flex",
-            gap: 40,
-            marginTop: 28,
-            fontSize: 28,
-            opacity: 0.8,
-            justifyContent: "center",
-          }}
-        >
-          {firstContribDate && (
-            <div>
-              <div style={{ opacity: 0.6, fontSize: 20 }}>FIRST BRICK</div>
-              <div>{firstContribDate}</div>
-            </div>
-          )}
-          {biggestYear && (
-            <div>
-              <div style={{ opacity: 0.6, fontSize: 20 }}>BIGGEST SKYLINE</div>
-              <div>
-                {biggestYear.year} ·{" "}
-                {biggestYear.totalContributions.toLocaleString()}
-              </div>
-            </div>
-          )}
+        <div style={{ fontSize: 34, marginTop: 22, opacity: 0.76 }}>
+          Let's build. &nbsp;□ gh-skyline &nbsp;@{username.replace(/^@/, "")}
         </div>
       </div>
     </AbsoluteFill>

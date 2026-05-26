@@ -8,19 +8,27 @@ import { palette } from "./theme";
 
 interface LightingProps {
   theme: Theme;
+  ambientIntensity?: number;
+  rimIntensity?: number;
 }
 
-export const Lighting: React.FC<LightingProps> = ({ theme }) => {
+export const Lighting: React.FC<LightingProps> = ({
+  theme,
+  ambientIntensity,
+  rimIntensity = 0.24,
+}) => {
   const p = palette(theme);
+  const ambient = ambientIntensity ?? (theme === "dark" ? 0.30 : 0.55);
   return (
     <>
       {/* Lighting deliberately lean so per-level base-colour differentiation
           isn't washed out. L1-L4 hex differences only read if the directional
           contribution stays moderate. */}
-      <ambientLight intensity={theme === "dark" ? 0.30 : 0.55} />
+      <ambientLight intensity={ambient} />
       <directionalLight
-        position={[10, 14, 8]}
-        intensity={theme === "dark" ? 0.55 : 0.65}
+        position={[-8, 16, 10]}
+        intensity={theme === "dark" ? 0.58 : 0.68}
+        color="#fff4e0"
         castShadow
       />
       <directionalLight
@@ -28,9 +36,9 @@ export const Lighting: React.FC<LightingProps> = ({ theme }) => {
         intensity={theme === "dark" ? 0.30 : 0.30}
       />
       <directionalLight
-        position={[-12, 6, -10]}
-        intensity={0.30}
-        color={p.rim}
+        position={[8, 6, -10]}
+        intensity={rimIntensity}
+        color={theme === "dark" ? "#a8c8ff" : p.rim}
       />
     </>
   );

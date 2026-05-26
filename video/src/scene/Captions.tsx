@@ -6,6 +6,7 @@ import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import type { Theme } from "../schema";
 import { palette } from "./theme";
+import { MONA_SANS_FONT_FAMILY } from "./typography";
 
 interface CaptionsProps {
   theme: Theme;
@@ -60,8 +61,7 @@ export const Captions: React.FC<CaptionsProps> = ({
         style={{
           color: p.captionText,
           textShadow: `0 2px 12px ${p.captionShadow}`,
-          fontFamily:
-            'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+          fontFamily: `"${MONA_SANS_FONT_FAMILY}", ui-sans-serif, system-ui, sans-serif`,
           fontSize: 56,
           fontWeight: 600,
           textAlign: "center",

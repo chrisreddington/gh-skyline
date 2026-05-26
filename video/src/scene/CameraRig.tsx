@@ -18,6 +18,8 @@ export interface CameraKeyframe {
   position: [number, number, number];
   lookAt: [number, number, number];
   fov?: number;
+  /** If true, snap to this keyframe instead of interpolating from the previous one. */
+  cut?: boolean;
 }
 
 export interface RigSample {
@@ -38,6 +40,42 @@ function lerp3(
   t: number,
 ): [number, number, number] {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+function add3(
+  a: [number, number, number],
+  b: [number, number, number],
+): [number, number, number] {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
+function sub3(
+  a: [number, number, number],
+  b: [number, number, number],
+): [number, number, number] {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+function scale3(
+  a: [number, number, number],
+  s: number,
+): [number, number, number] {
+  return [a[0] * s, a[1] * s, a[2] * s];
+}
+
+function bezier3(
+  p0: [number, number, number],
+  p1: [number, number, number],
+  p2: [number, number, number],
+  p3: [number, number, number],
+  t: number,
+): [number, number, number] {
+  const u = 1 - t;
+  const a = scale3(p0, u * u * u);
+  const b = scale3(p1, 3 * u * u * t);
+  const c = scale3(p2, 3 * u * t * t);
+  const d = scale3(p3, t * t * t);
+  return add3(add3(a, b), add3(c, d));
 }
 
 /**
@@ -62,10 +100,25 @@ export function sampleRig(frame: number, keyframes: CameraKeyframe[]): RigSample
   while (i < keyframes.length - 1 && keyframes[i + 1].frame <= frame) i++;
   const a = keyframes[i];
   const b = keyframes[i + 1];
+  if (b.cut) {
+    return {
+      position: a.position,
+      lookAt: a.lookAt,
+      fov: a.fov ?? DEFAULT_FOV,
+    };
+  }
   const t = (frame - a.frame) / Math.max(1, b.frame - a.frame);
   const eased = easeInOutCubic(t);
+  const prev = i > 0 && !a.cut ? keyframes[i - 1] : a;
+  const next = i + 2 < keyframes.length && !keyframes[i + 2].cut
+    ? keyframes[i + 2]
+    : b;
+  const tangentIn = scale3(sub3(b.position, prev.position), 0.18);
+  const tangentOut = scale3(sub3(next.position, a.position), 0.18);
+  const c1 = add3(a.position, tangentIn);
+  const c2 = sub3(b.position, tangentOut);
   return {
-    position: lerp3(a.position, b.position, eased),
+    position: bezier3(a.position, c1, c2, b.position, eased),
     lookAt: lerp3(a.lookAt, b.lookAt, eased),
     fov: (a.fov ?? DEFAULT_FOV) + ((b.fov ?? DEFAULT_FOV) - (a.fov ?? DEFAULT_FOV)) * eased,
   };

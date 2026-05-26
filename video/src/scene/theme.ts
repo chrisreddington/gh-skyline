@@ -94,7 +94,7 @@ export function levelMaterial(level: BucketLevel, theme: Theme): LevelMaterial {
   // dramatically to mark "this is the peak" without leaving the green family.
   const tints: readonly string[] = p.levels;
   // Big gap between L3 and L4 so peak tier reads as distinct landmarks.
-  const darkIntensities = [0, 0.25, 0.55, 1.10, 2.40];
+  const darkIntensities = [0, 0.45, 0.55, 1.10, 1.80];
   const lightIntensities = [0, 0.06, 0.15, 0.30, 0.65];
   const intensities = theme === "dark" ? darkIntensities : lightIntensities;
   // L4 uses a brightened tint pulled toward white-green so it pops over L3

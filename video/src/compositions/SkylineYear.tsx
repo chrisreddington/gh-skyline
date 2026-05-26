@@ -426,6 +426,7 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
           theme={theme}
           cameraX={cameraX}
           buildLeadDistance={BUILD_LEAD}
+          showBaseplate
         />
         {peak.highlight.length > 0 && hasContent && (
           <Sequence
