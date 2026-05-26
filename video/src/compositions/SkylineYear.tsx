@@ -99,19 +99,20 @@ export const calculateSkylineYearMetadata: CalculateMetadataFunction<
 
 // Phase boundaries (absolute frames @ 30fps = 30s total).
 //
-// v10 changes:
-//  - Frame 0 = frame 900: wide overhead overview (seamless loop).
-//  - TITLE_END = 90f (3s): full title-card establishing shot of the year profile.
-//  - ENTRY_END = 150f (5s): 2s dive to street level (smoother than 1.5s).
-//  - CRUISE_END = 570 (19s): same total cruise time.
-//  - APPROACH/CANYON/EMERGE unchanged.
+// v11 changes:
+//  - FLYBY_END added: panoramic orbit now happens after cruise, before peak —
+//    "here's your year at a glance" → "and here's your best moment".
+//  - CRUISE_END compressed to 480 (11s) to make room for the mid-video flyby.
+//  - EMERGE_END extended to 840 to give the outro/home-arc 60 frames.
+//  - Frame 0 = frame 900 (seamless loop) unchanged.
 const TITLE_END = 90;       // 3s — wide profile overview + title card
 const ENTRY_END = 150;      // 5s — descended to street level, cruise begins
-const CRUISE_END = 570;     // 19s — density-weighted cruise along the year
+const CRUISE_END = 480;     // 16s — density-weighted cruise along the year
+const FLYBY_END = 570;      // 19s — panoramic orbit showing the full year
 const APPROACH_END = 660;   // 22s — 3s smooth decel into peak district
 const CANYON_END = 780;     // 26s — 4s canyon hold to celebrate the peak
-const EMERGE_END = 810;     // 27s — 1s pull-back to orbit start
-const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 900 — 3s orbit arc back to frame 0
+const EMERGE_END = 840;     // 28s — 2s pull-back + outro
+const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 900 — 2s home arc (seamless loop)
 
 // Z floor — camera never goes closer than this in Z so it doesn't clip into
 // bars (bars span Z ±3.45 with originZ=-3 and cellSize=0.9 → far edge ≈ 3.5).
@@ -296,7 +297,7 @@ function buildKeyframes(
     fov: 42,
   });
 
-  // -------------------- 150..570 Cruise with adaptive speed/density --------
+  // -------------------- 150..480 Cruise with adaptive speed/density --------
   // 5 samples starting at i=1 (i=0 would duplicate the ENTRY_END keyframe).
   // EWMA smoothedDensity is pre-seeded from the entry position so the first
   // cruise sample blends correctly.
@@ -317,20 +318,37 @@ function buildKeyframes(
     k.push({ frame, position: [x, y, z], lookAt: [x + 4, lookY, 0], fov });
   }
 
+  // -------------------- 480..570 Panoramic orbit flyby (3s) ----------------
+  // After street-level cruise the camera pulls back to show the FULL year
+  // silhouette before diving to the peak. Narrative: "here's everything you
+  // built this year… and here's your best moment."
+  // lookAt is pinned to midActiveX throughout for a stately orbital pan.
+  k.push({
+    frame: CRUISE_END + 30,  // 510
+    position: [midActiveX + 10, 9.5, 28],
+    lookAt: [midActiveX, 2.2, 0],
+    fov: 40,
+  });
+  k.push({
+    frame: CRUISE_END + 60,  // 540
+    position: [midActiveX, 12.5, 36],
+    lookAt: [midActiveX, 2.4, 0],
+    fov: 52,
+  });
+  k.push({
+    frame: FLYBY_END,  // 570
+    position: [midActiveX - 10, 9.5, 28],
+    lookAt: [midActiveX, 2.2, 0],
+    fov: 40,
+  });
+
   // -------------------- 570..660 Peak approach (3s) -------------------------
   const px = peak.centerX;
   const peakLift = peakLiftAtX(px, placements);
   const peakY = Math.max(2.4, Math.min(peakLift * 0.55 + 1.0, 5.5));
 
   if (hasContent) {
-    // Bridge: halfway between cruise end X and peak, 40 frames in.
-    const bridgeX = cruiseEndX + (px - cruiseEndX) * 0.5;
-    k.push({
-      frame: CRUISE_END + 40,
-      position: [bridgeX, 8.5, Z_FLOOR + 6.5],
-      lookAt: [px, 2.0, 0],
-      fov: 38,
-    });
+    // Bridge: dive from flyby position toward the peak.
     k.push({
       frame: APPROACH_END,
       position: [px - 4, peakY + 1.4, Z_FLOOR + 4.0],
@@ -359,42 +377,37 @@ function buildKeyframes(
       fov: 30,
     });
   } else {
-    // Empty year: gentle glide over the year's centre before emergence.
+    // Empty year: gentle orbit over the centre before emergence.
     k.push({
-      frame: CRUISE_END + 60,
-      position: [midActiveX, 8, 20],
+      frame: APPROACH_END,
+      position: [midActiveX, 8, 22],
       lookAt: [midActiveX, 1.5, 0],
       fov: 44,
     });
     k.push({
       frame: CANYON_END,
-      position: [midActiveX, 10, 24],
+      position: [midActiveX, 10, 26],
       lookAt: [midActiveX, 1.5, 0],
       fov: 48,
     });
   }
 
-  // -------------------- 780..810 Emergence (1s) ----------------------------
+  // -------------------- 780..840 Emergence + outro (2s) -------------------
+  // Single pull-back keyframe — camera rises away from the canyon and begins
+  // the arc home. ChartOutro overlays show totals during this window.
   k.push({
-    frame: EMERGE_END,
-    position: [midActiveX + 12, 9.5, 23],
+    frame: EMERGE_END - 30,  // 810
+    position: [midActiveX + 6, 10.5, 26],
     lookAt: [midActiveX, 2.0, 0],
-    fov: 36,
+    fov: 38,
   });
 
-  // -------------------- 810..900 Panoramic orbit → seamless loop -----------
-  // Camera arcs up and back, arriving exactly at homePos/homeLook/homeFov so
-  // the sequence loops without a visible cut.
-  // Three intermediate keyframes form a rising arc that smoothly decelerates
-  // to zero velocity at frame 900 (nextKf=null → C2=homePos in CameraRig).
+  // -------------------- 840..900 Home arc → seamless loop (2s) ------------
+  // Camera arcs back to homePos so the loop is invisible (frame 900 = frame 0).
+  // With nextKf=null the CameraRig sets C2=homePos → velocity is zero at
+  // frame 900, matching the cut:true zero-velocity at frame 0.
   k.push({
-    frame: EMERGE_END + 30,  // 840
-    position: [midActiveX + 6, 11.5, 30],
-    lookAt: [midActiveX, 2.2, 0],
-    fov: 42,
-  });
-  k.push({
-    frame: EMERGE_END + 60,  // 870
+    frame: EMERGE_END + 30,  // 870
     position: [midActiveX, 13.0, 38],
     lookAt: [midActiveX, 2.4, 0],
     fov: 56,
@@ -435,15 +448,19 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
   );
   const p = palette(theme);
 
-  // For the wide overview (frames 0→ENTRY_END) all bars must be visible so the
-  // establishing shot shows the full year silhouette. After ENTRY_END the camera
-  // is at the far-left start of the year, so camera-X-based reveal resumes
-  // naturally — bars are "already there" and the build wave begins from originX.
+  // Build-wave sentinel logic:
+  //  - Overview + entry (0→ENTRY_END): all bars pre-revealed so the establishing
+  //    shot shows the full year silhouette.
+  //  - Cruise (ENTRY_END→CRUISE_END): camera-X based reveal — bars materialise
+  //    progressively as the camera sweeps left-to-right. At street level the far
+  //    end of the year isn't visible anyway, so the transition at ENTRY_END is
+  //    imperceptible.
+  //  - Flyby + rest (CRUISE_END→): all bars visible — cruise has already swept
+  //    to cruiseEndX so all bars are built; switching back to camera-X would
+  //    un-reveal the far end as the camera orbits back. Keeping sentinel ensures
+  //    the flyby "year in review" shows the complete skyline.
   const cameraX = useMemo(() => {
-    if (frame <= ENTRY_END) {
-      // Use a large sentinel so all bars pass the reveal test.
-      return 1e6;
-    }
+    if (frame <= ENTRY_END || frame >= CRUISE_END) return 1e6;
     return sampleRig(frame, keyframes).position[0];
   }, [frame, keyframes]);
 
@@ -517,20 +534,21 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
           theme={theme}
           visibleFromFrame={CRUISE_END}
           visibleToFrame={EMERGE_END - 30}
-          placement="bottom"
+          placement="top"
           fadeFrames={20}
         >
           A quiet year. The graph took a breath.
         </Captions>
       )}
 
-      {/* Canyon-moment caption — observational, magnitude-agnostic. */}
+      {/* Canyon-moment caption — at the top so it doesn't clash with the
+          lower-third watermark (username/year) which sits at the bottom. */}
       {peak.caption && hasContent && (
         <Captions
           theme={theme}
           visibleFromFrame={APPROACH_END + 5}
           visibleToFrame={CANYON_END + 15}
-          placement="bottom"
+          placement="top"
           fadeFrames={14}
         >
           {peak.caption}
@@ -542,7 +560,7 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
         year={data.year}
         total={data.totalContributions}
         username={username}
-        fromFrame={EMERGE_END + 20}
+        fromFrame={EMERGE_END}
         toFrame={TOTAL}
         theme={theme}
       />
