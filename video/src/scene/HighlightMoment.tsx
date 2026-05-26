@@ -23,7 +23,7 @@ interface HighlightMomentProps {
 }
 
 const TEMP_OBJECT = new THREE.Object3D();
-const HIGHLIGHT_SCALE = 1.18;
+const HIGHLIGHT_SCALE = 1.06;
 
 export const HighlightMoment: React.FC<HighlightMomentProps> = ({
   bars,
@@ -35,22 +35,24 @@ export const HighlightMoment: React.FC<HighlightMomentProps> = ({
   const p = palette(theme);
 
   // Ease in over first 20%, hold, ease out over last 20%.
+  // Peak intensity capped at 0.45 so the bars read as "lit landmarks" rather
+  // than flooding the frame when the camera is inside the bar bounding box.
   const intensity = useMemo(() => {
     const inEnd = durationFrames * 0.2;
     const outStart = durationFrames * 0.8;
     if (frame <= inEnd) {
-      return interpolate(frame, [0, inEnd], [0, 1.2], {
+      return interpolate(frame, [0, inEnd], [0, 0.45], {
         extrapolateLeft: "clamp",
         extrapolateRight: "clamp",
       });
     }
     if (frame >= outStart) {
-      return interpolate(frame, [outStart, durationFrames], [1.2, 0], {
+      return interpolate(frame, [outStart, durationFrames], [0.45, 0], {
         extrapolateLeft: "clamp",
         extrapolateRight: "clamp",
       });
     }
-    return 1.2;
+    return 0.45;
   }, [frame, durationFrames]);
 
   useLayoutEffect(() => {
@@ -60,9 +62,9 @@ export const HighlightMoment: React.FC<HighlightMomentProps> = ({
       const h = Math.max(bar.height, 0.05) * HIGHLIGHT_SCALE;
       TEMP_OBJECT.position.set(bar.x, h / 2, bar.z);
       TEMP_OBJECT.scale.set(
-        HIGHLIGHT_SCALE * 0.9,
+        HIGHLIGHT_SCALE * 0.95,
         h,
-        HIGHLIGHT_SCALE * 0.9,
+        HIGHLIGHT_SCALE * 0.95,
       );
       TEMP_OBJECT.rotation.set(0, 0, 0);
       TEMP_OBJECT.updateMatrix();
@@ -84,8 +86,10 @@ export const HighlightMoment: React.FC<HighlightMomentProps> = ({
         color={p.highlight}
         emissive={p.highlight}
         emissiveIntensity={intensity}
+        roughness={0.25}
+        metalness={0.05}
         transparent
-        opacity={Math.min(1, intensity * 0.9)}
+        opacity={Math.min(0.85, intensity * 0.6 + 0.3)}
       />
     </instancedMesh>
   );

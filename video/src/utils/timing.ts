@@ -68,14 +68,21 @@ function compose(
 /**
  * Allocate frame ranges for the SkylineFull composition.
  *
- * @param yearCount   Number of years in the document. Must be ≥ 1.
- * @param maxSeconds  Hard cap on total runtime (seconds).
- * @param defaults    Override defaults (optional).
+ * @param yearCount       Number of years in the document. Must be ≥ 1.
+ * @param maxSeconds      Hard cap on total runtime (seconds).
+ * @param defaults        Override defaults (optional).
+ * @param perYearWeights  Optional per-year weights (length === yearCount).
+ *                        If provided, segment frames are distributed
+ *                        proportionally to weights with per-year clamps so
+ *                        no single year dominates or vanishes. Use this to
+ *                        give busy years more screen time than quiet years
+ *                        for the same developer.
  */
 export function allocate(
   yearCount: number,
   maxSeconds: number,
   defaults: TimingDefaults = DEFAULT_TIMING,
+  perYearWeights?: readonly number[],
 ): Allocation {
   if (!Number.isInteger(yearCount) || yearCount < 1) {
     throw new Error(
@@ -84,6 +91,11 @@ export function allocate(
   }
   if (!(maxSeconds > 0)) {
     throw new Error(`allocate: maxSeconds must be > 0 (got ${maxSeconds})`);
+  }
+  if (perYearWeights && perYearWeights.length !== yearCount) {
+    throw new Error(
+      `allocate: perYearWeights length (${perYearWeights.length}) must equal yearCount (${yearCount})`,
+    );
   }
   const { fps } = defaults;
   const maxFrames = Math.floor(maxSeconds * fps);
@@ -94,6 +106,19 @@ export function allocate(
       `allocate: intro+outro (${introF + outroF}f) does not leave room within maxFrames (${maxFrames}f)`,
     );
   }
+
+  // Weighted-distribution path: dispatch and return early.
+  if (perYearWeights) {
+    return allocateWeighted(
+      introF,
+      outroF,
+      defaults,
+      yearCount,
+      maxFrames,
+      perYearWeights,
+    );
+  }
+
   let segF = s2f(defaults.perYearSeconds, fps);
   let transF = s2f(defaults.transitionSeconds, fps);
 
@@ -184,6 +209,155 @@ function assemble(
       transitionFrames: thisTrans,
     });
     cursor += segF + thisTrans;
+  }
+  const totalFrames = cursor + outroF;
+  return { fps, introFrames: introF, outroFrames: outroF, perYear, totalFrames };
+}
+
+// Per-year clamp bounds for weighted allocation (in seconds).
+const WEIGHTED_MIN_SEG_SECONDS = 3;
+const WEIGHTED_MAX_SEG_SECONDS = 18;
+
+/**
+ * Weighted segment allocation. Distributes the available segment budget
+ * proportional to weights, clamped per-year so:
+ *   - no year is shorter than WEIGHTED_MIN_SEG_SECONDS (so quiet years still
+ *     register on-screen),
+ *   - no year is longer than WEIGHTED_MAX_SEG_SECONDS (so one mega-year
+ *     doesn't eat the whole timeline),
+ *   - any leftover from clamps is redistributed across unclamped years.
+ *
+ * If even the minimums can't fit within maxFrames, falls back to uniform
+ * allocation with progressively-shrinking floors (same staged strategy as
+ * the unweighted path).
+ */
+function allocateWeighted(
+  introF: number,
+  outroF: number,
+  defaults: TimingDefaults,
+  n: number,
+  maxFrames: number,
+  weights: readonly number[],
+): Allocation {
+  const { fps } = defaults;
+  let transF = s2f(defaults.transitionSeconds, fps);
+  const minSeg = s2f(WEIGHTED_MIN_SEG_SECONDS, fps);
+  const maxSeg = s2f(WEIGHTED_MAX_SEG_SECONDS, fps);
+
+  const trySegBudget = (transFTry: number): number[] | null => {
+    const transTotal = Math.max(0, n - 1) * transFTry;
+    const budget = maxFrames - introF - outroF - transTotal;
+    if (budget < n * SEGMENT_HARD_MIN_FRAMES) return null;
+    // Initial proportional allocation (non-negative weights; replace
+    // non-positive with epsilon so they still get a minimum slot).
+    const safeW = weights.map((w) =>
+      Number.isFinite(w) && w > 0 ? w : 0.001,
+    );
+    const sumW = safeW.reduce((a, b) => a + b, 0);
+    const raw = safeW.map((w) => (w / sumW) * budget);
+    // Apply per-year clamps; rebalance overflow/underflow into unclamped.
+    const clamped: number[] = new Array(n).fill(0);
+    const isFixed: boolean[] = new Array(n).fill(false);
+    let remaining = budget;
+    // Iteratively pin clamped years until none change.
+    while (true) {
+      let changed = false;
+      const fixedTotal = clamped.reduce(
+        (s, v, i) => s + (isFixed[i] ? v : 0),
+        0,
+      );
+      const freeWSum = safeW.reduce(
+        (s, w, i) => s + (isFixed[i] ? 0 : w),
+        0,
+      );
+      const freeBudget = remaining - fixedTotal;
+      if (freeWSum <= 0) {
+        // All years fixed. Distribute any residue evenly into smallest.
+        break;
+      }
+      for (let i = 0; i < n; i++) {
+        if (isFixed[i]) continue;
+        const proposed = (safeW[i] / freeWSum) * freeBudget;
+        if (proposed < minSeg) {
+          clamped[i] = minSeg;
+          isFixed[i] = true;
+          changed = true;
+        } else if (proposed > maxSeg) {
+          clamped[i] = maxSeg;
+          isFixed[i] = true;
+          changed = true;
+        }
+      }
+      if (!changed) {
+        // Fill remaining free years proportionally.
+        for (let i = 0; i < n; i++) {
+          if (isFixed[i]) continue;
+          clamped[i] = (safeW[i] / freeWSum) * freeBudget;
+        }
+        break;
+      }
+    }
+    // Convert to integer frames; absorb rounding into the smallest free year.
+    const intSeg = clamped.map((v) => Math.max(SEGMENT_HARD_MIN_FRAMES, Math.round(v)));
+    // Verify minimum feasibility.
+    const sumInt = intSeg.reduce((a, b) => a + b, 0);
+    if (sumInt < budget - n) {
+      // Significant under-utilisation: pad the largest year.
+      const diff = budget - sumInt;
+      const largestIdx = intSeg.indexOf(Math.max(...intSeg));
+      intSeg[largestIdx] += diff;
+    } else if (sumInt > budget) {
+      // Trim from the largest unfixed (or largest overall) until we fit.
+      let over = sumInt - budget;
+      while (over > 0) {
+        const idx = intSeg.indexOf(Math.max(...intSeg));
+        const reducible = intSeg[idx] - SEGMENT_HARD_MIN_FRAMES;
+        if (reducible <= 0) return null;
+        const cut = Math.min(reducible, over);
+        intSeg[idx] -= cut;
+        over -= cut;
+      }
+    }
+    void raw;
+    return intSeg;
+  };
+
+  let segments = trySegBudget(transF);
+  if (!segments) {
+    // Drop transition to 0.5s and retry.
+    transF = Math.round(SHRUNK_TRANSITION_FRAMES_30FPS * (fps / 30));
+    segments = trySegBudget(transF);
+  }
+  if (!segments) {
+    // Last-resort: uniform with hard min floor.
+    const stage = shrinkSegment(
+      introF,
+      outroF,
+      transF,
+      n,
+      maxFrames,
+      SEGMENT_HARD_MIN_FRAMES,
+    );
+    if (stage === null) {
+      throw new Error(
+        `allocate(weighted): cannot fit ${n} years within ${maxFrames}f; raise maxDurationSeconds`,
+      );
+    }
+    return assemble(introF, outroF, stage, transF, n, fps);
+  }
+  // Assemble with per-year variable segments.
+  const perYear: YearSegment[] = [];
+  let cursor = introF;
+  for (let i = 0; i < n; i++) {
+    const isLast = i === n - 1;
+    const thisTrans = isLast ? 0 : transF;
+    perYear.push({
+      index: i,
+      startFrame: cursor,
+      segmentFrames: segments[i],
+      transitionFrames: thisTrans,
+    });
+    cursor += segments[i] + thisTrans;
   }
   const totalFrames = cursor + outroF;
   return { fps, introFrames: introF, outroFrames: outroF, perYear, totalFrames };

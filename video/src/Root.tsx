@@ -21,13 +21,26 @@ import {
 } from "./compositions/SkylineFull";
 
 import sampleYear from "../fixtures/sample-year.json";
-import sampleMulti from "../fixtures/sample-multi.json";
+import sampleFull from "../fixtures/sample-full.json";
 
 import type { YearData, SkylineDocument } from "./schema";
 
 const sampleYearDoc = sampleYear as unknown as SkylineDocument;
-const sampleMultiDoc = sampleMulti as unknown as SkylineDocument;
+const sampleFullDoc = sampleFull as unknown as SkylineDocument;
 const sampleYearData: YearData = sampleYearDoc.years[0];
+
+// For SkylineYear default, pick the user's most dramatic year from the full
+// history (highest totalContributions). Falls back to the synthetic fixture
+// if the full fixture isn't available.
+const hero: YearData = (() => {
+  if (!sampleFullDoc?.years?.length) return sampleYearData;
+  let best = sampleFullDoc.years[0];
+  for (const y of sampleFullDoc.years) {
+    if (y.totalContributions > best.totalContributions) best = y;
+  }
+  return best;
+})();
+const heroUsername = sampleFullDoc?.username ?? sampleYearDoc.username;
 
 export const Root: React.FC = () => {
   return (
@@ -42,8 +55,8 @@ export const Root: React.FC = () => {
         height={2160}
         calculateMetadata={calculateSkylineYearMetadata}
         defaultProps={{
-          data: sampleYearData,
-          username: sampleYearDoc.username,
+          data: hero,
+          username: heroUsername,
           theme: "dark" as const,
           resolution: "1080p" as const,
         }}
@@ -58,7 +71,7 @@ export const Root: React.FC = () => {
         height={2160}
         calculateMetadata={calculateSkylineFullMetadata}
         defaultProps={{
-          data: sampleMultiDoc,
+          data: sampleFullDoc,
           theme: "dark" as const,
           resolution: "1080p" as const,
           maxDurationSeconds: 180,

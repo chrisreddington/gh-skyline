@@ -1,25 +1,33 @@
 /**
  * SkylineYear: single-year fly-through composition.
  *
- * Camera grammar (frames @30fps, total 900 = 30s):
- *   0   – 90   Establishing overhead → descent. Title overlay on top of the
- *              already-visible 3D city (so the first frame works as a social
- *              loop entry point).
- *   90  – 180  Entry: camera approaches week-0 from the side, Z high.
- *   180 – 540  Cruise: travel along +X with Z and FOV "breathing" with crowd
- *              density. Sparse stretches → wide pull-back; dense stretches →
- *              canyon at Z≈2 with telephoto FOV.
- *   540 – 660  Peak approach: keyframes cluster around the year's peakWeek
- *              (or peakDay fallback) so the camera naturally slows and dives.
- *   660 – 750  Canyon moment: inside the peak district. Peak bars glow via
- *              <HighlightMoment>. Caption fades in/out within this window.
- *   750 – 840  Emergence: rise out of the canyon and pull back to the apex
- *              postcard angle. Outro card fades in.
- *   840 – 900  Hold on postcard angle while outro fades through.
+ * Storytelling beats (frames @30fps, total 900 = 30s):
+ *   0   – 75   Opening shot: angled top-down on a half-built city. The bars
+ *              for the year are rising chronologically as the camera enters,
+ *              so the year is literally being constructed in front of the
+ *              viewer. Title overlays the live build.
+ *   75  – 180  Descent + entry: camera drops to canopy level and approaches
+ *              week-0 from the side.
+ *   180 – 600  Cruise: travel along +X with Z/FOV/speed "breathing" with the
+ *              year's RELATIVE density curve (normalized to this year's own
+ *              min/max so every developer gets visible swell-and-ebb).
+ *              The bar-build wave moves with the camera, so each district
+ *              materialises just before we arrive.
+ *   600 – 660  Peak approach: deceleration into the year's peak week / day.
+ *   660 – 720  Canyon hold: near-stationary inside the peak district. Peak
+ *              bars glow via <HighlightMoment>.
+ *   720 – 810  Emergence + reveal: pull back to the wide postcard angle.
+ *   810 – 900  Chart-out: camera slides into a side-profile pose so the year
+ *              reads as a 1-D histogram silhouette. Outro card with totals.
  *
- * Empty year (stats null / peakInYear == 0) fallback: the peak target reverts
- * to the grid centre and the canyon-moment is skipped — the cruise extends
- * smoothly across the full year.
+ * Adaptive fallbacks:
+ *   - Empty year (totalContributions == 0 or stats == null): canyon + highlight
+ *     are skipped; cruise extends and the side-profile chart-out still plays.
+ *   - Tiny year (peak count == 1): canyon plays normally but copy stays
+ *     observational ("Peak day · 1 contribution · 2014-02-19").
+ *   - Flat year (uniform daily counts): density curve still self-stretches
+ *     so the camera swells/ebbs between the relatively-busy and -quiet
+ *     stretches.
  */
 import React, { useMemo } from "react";
 import * as THREE from "three";
@@ -47,9 +55,12 @@ import { Captions } from "../scene/Captions";
 import { HighlightMoment } from "../scene/HighlightMoment";
 import {
   CameraRig,
+  sampleRig,
   peakLiftAtX,
-  crowdDensityAtX,
+  buildRelativeDensityCurve,
+  densityAt,
   type CameraKeyframe,
+  type DensitySample,
 } from "../scene/CameraRig";
 import {
   layoutBars,
@@ -86,13 +97,20 @@ export const calculateSkylineYearMetadata: CalculateMetadataFunction<
 };
 
 // Phase boundaries (absolute frames).
-const TITLE_END = 90;
+const TITLE_END = 75;
 const ENTRY_END = 180;
-const CRUISE_END = 540;
+const CRUISE_END = 600;
 const APPROACH_END = 660;
-const CANYON_END = 750;
-const EMERGE_END = 840;
+const CANYON_END = 720;
+const EMERGE_END = 810;
 const TOTAL = SKYLINE_YEAR_DURATION_FRAMES;
+
+// Z floor — camera never goes closer than this in Z so it doesn't clip into
+// bars (bars span Z ±3.45 with originZ=-3 and cellSize=0.9 → far edge ≈ 3.5).
+const Z_FLOOR = 4.2;
+
+// Bar build-in: how far ahead of the camera the wave extends, in world units.
+const BUILD_LEAD = 9;
 
 interface PeakTargetBars {
   /** Bars to glow during the canyon moment (peakWeek column if available). */
@@ -103,34 +121,39 @@ interface PeakTargetBars {
   centerX: number;
 }
 
+/**
+ * Pick the canyon target. Order of preference: peakWeek → peakDay → none.
+ * Captions stay observational regardless of magnitude (no "got architectural"
+ * for small numbers, no "skyline woke up" for empty years).
+ */
 function pickPeakTarget(
   year: YearData,
   placements: BarPlacement[],
   fallbackCenterX: number,
 ): PeakTargetBars {
   const s = year.stats;
-  if (!s) {
+  if (!s || year.totalContributions === 0) {
     return { highlight: [], caption: null, centerX: fallbackCenterX };
   }
-  // Prefer peakWeek (whole column glows = "district" feel).
   if (s.peakWeek) {
     const bars = placementsForWeekStart(placements, s.peakWeek.startDate);
     if (bars.length > 0) {
       const center = bars[0].x;
+      const c = s.peakWeek.total;
       return {
         highlight: bars,
-        caption: `Peak week · ${s.peakWeek.total.toLocaleString()} contributions`,
+        caption: `Peak week · ${c.toLocaleString()} contribution${c === 1 ? "" : "s"} · w/c ${s.peakWeek.startDate}`,
         centerX: center,
       };
     }
   }
-  // Fall back to peakDay (single bar glow).
   if (s.peakDay) {
     const bar = placementForDate(placements, s.peakDay.date);
     if (bar) {
+      const c = s.peakDay.count;
       return {
         highlight: [bar],
-        caption: `Peak day · ${s.peakDay.count.toLocaleString()} contributions · ${s.peakDay.date}`,
+        caption: `Peak day · ${c.toLocaleString()} contribution${c === 1 ? "" : "s"} · ${s.peakDay.date}`,
         centerX: bar.x,
       };
     }
@@ -138,62 +161,119 @@ function pickPeakTarget(
   return { highlight: [], caption: null, centerX: fallbackCenterX };
 }
 
+/**
+ * Build a piecewise-linear remap of cruise time `u in [0,1]` (uniform) to a
+ * density-weighted progress along the year. The camera spends MORE frames in
+ * dense stretches (slow-mo through bustling districts) and FEWER frames in
+ * sparse stretches (skim across quiet weeks). The curve is normalized so the
+ * year always uses its full cruise budget regardless of density distribution.
+ *
+ * Returns an array of `[u, t]` pairs where `u` is uniform progress through
+ * cruise time and `t` is the position along the year's X span. With no
+ * density variation (empty year), `t === u` (uniform cruise).
+ */
+function buildSpeedRemap(curve: DensitySample[]): Array<[number, number]> {
+  const N = curve.length;
+  if (N < 2) {
+    return [[0, 0], [1, 1]];
+  }
+  // Weight: dwell-time per sample = (0.4 + density). Sparse weeks get 0.4,
+  // dense weeks get 1.4 → ~3.5× speed difference between extremes.
+  const weights: number[] = curve.map((s) => 0.4 + s.density);
+  let totalW = 0;
+  for (const w of weights) totalW += w;
+  // Cumulative time (u) per sample, normalized.
+  const cumU: number[] = [];
+  let acc = 0;
+  for (let i = 0; i < N; i++) {
+    cumU.push(acc / totalW);
+    acc += weights[i];
+  }
+  cumU.push(1);
+  // Map each sample to its spatial position (t in [0,1]).
+  const samples: Array<[number, number]> = [];
+  for (let i = 0; i < N; i++) {
+    const tSpace = i / (N - 1);
+    samples.push([cumU[i], tSpace]);
+  }
+  // Ensure endpoints are exact.
+  samples[0] = [0, 0];
+  samples[samples.length - 1] = [1, 1];
+  return samples;
+}
+
+function lerpSpeedRemap(remap: Array<[number, number]>, u: number): number {
+  if (u <= remap[0][0]) return remap[0][1];
+  if (u >= remap[remap.length - 1][0]) return remap[remap.length - 1][1];
+  for (let i = 0; i < remap.length - 1; i++) {
+    const [u0, t0] = remap[i];
+    const [u1, t1] = remap[i + 1];
+    if (u >= u0 && u <= u1) {
+      const f = (u - u0) / Math.max(u1 - u0, 1e-9);
+      return t0 + (t1 - t0) * f;
+    }
+  }
+  return remap[remap.length - 1][1];
+}
+
 function buildKeyframes(
   year: YearData,
   placements: BarPlacement[],
   peak: PeakTargetBars,
+  densityCurve: DensitySample[],
+  hasContent: boolean,
 ): CameraKeyframe[] {
   const geom = gridGeometry(year);
   const stride = geom.cellSize + geom.gap;
   const span = (geom.weekCount - 1) * stride;
-  const center: [number, number, number] = [0, 1.2, 0];
+  const speedRemap = buildSpeedRemap(densityCurve);
 
   const k: CameraKeyframe[] = [];
 
-  // -------------------- 0..90 Establishing overhead → descent --------------
-  // Frame 0: high gods-eye, city visible immediately for social loops.
-  k.push({ frame: 0, position: [0, 22, 6], lookAt: [0, 0, 0], fov: 50 });
+  // -------------------- 0..75 Opening: empty grid → wave begins ------------
+  // Frame 0: camera sits behind the year's left edge so cameraX < originX - lead.
+  // ALL bars have revealT=0 → invisible. The shot reads as: empty grid +
+  // title overlay. As camera flies forward during 0→75, the build wave
+  // sweeps across the first weeks of the year — the "year being built".
+  const startCamX = geom.originX - BUILD_LEAD - 4;
   k.push({
-    frame: 60,
-    position: [span * -0.15, 16, 8],
-    lookAt: [span * -0.05, 1, 0],
+    frame: 0,
+    position: [startCamX, 12, 11],
+    lookAt: [geom.originX + 4, 1.5, 0],
     fov: 44,
   });
   k.push({
     frame: TITLE_END,
-    position: [span * -0.45, 9, 9],
-    lookAt: [span * -0.35, 1.5, 0],
-    fov: 38,
+    position: [geom.originX - 2.5, 8, 9],
+    lookAt: [geom.originX + 5, 1.6, 0],
+    fov: 40,
   });
 
-  // -------------------- 90..180 Entry --------------------------------------
+  // -------------------- 75..180 Entry --------------------------------------
   k.push({
     frame: ENTRY_END,
-    position: [geom.originX - 1.5, 4.5, 7],
+    position: [geom.originX - 1.5, 4.5, Z_FLOOR + 2.5],
     lookAt: [geom.originX + 4, 1.8, 0],
     fov: 36,
   });
 
-  // -------------------- 180..540 Cruise with density/lift breathing ---------
-  // Sample many points so cubic ease between adjacent keyframes approximates
-  // uniform motion. At each sample we set Z (canyon depth) and FOV based on
-  // local crowd density and Y based on peak-lift.
-  const cruiseSamples = 14;
+  // -------------------- 180..600 Cruise with adaptive speed/density --------
+  // Use the speed-remap so time spent in dense stretches > sparse stretches.
+  const cruiseSamples = 16;
   for (let i = 0; i <= cruiseSamples; i++) {
-    const t = i / cruiseSamples;
+    const u = i / cruiseSamples;
+    const t = lerpSpeedRemap(speedRemap, u);
     const x = geom.originX + t * span;
-    const density = crowdDensityAtX(x, placements, 2);
+    const density = densityAt(densityCurve, x);
     const lift = peakLiftAtX(x, placements);
-    // Z: 7.5 when sparse → 2.5 when dense. Closer = canyon parallax.
-    const z = 7.5 - density * 5.0;
-    // Y: hug the canopy. Climb with lift but stay just above peak.
-    const y = Math.max(2.4, 2.6 + (lift - 2.4) * 0.55);
-    // FOV: 38° wide when sparse → 26° telephoto in canyon.
+    // Z: 8.5 sparse → Z_FLOOR dense.
+    const z = Math.max(Z_FLOOR, 8.5 - density * (8.5 - Z_FLOOR));
+    // Y: hug canopy + a touch above peak.
+    const y = Math.max(2.6, 2.8 + (lift - 2.4) * 0.55);
+    // FOV: 38° wide sparse → 26° telephoto dense.
     const fov = 38 - density * 12;
-    // LookAt: gaze forward along travel + slight downward bias so canyon
-    // walls fill the frame rather than sky.
     const lookY = density > 0.4 ? 1.0 + density * 1.2 : 0.6;
-    const frame = ENTRY_END + Math.round(t * (CRUISE_END - ENTRY_END));
+    const frame = ENTRY_END + Math.round(u * (CRUISE_END - ENTRY_END));
     k.push({
       frame,
       position: [x, y, z],
@@ -202,72 +282,92 @@ function buildKeyframes(
     });
   }
 
-  // -------------------- 540..660 Peak approach ------------------------------
-  // Decelerate into the peak target by clustering 3 keyframes around its X.
-  // Position swings around to come at it from the side, low Z (canyon entry).
+  // -------------------- 600..660 Peak approach ------------------------------
   const px = peak.centerX;
   const peakLift = peakLiftAtX(px, placements);
-  const peakY = Math.max(2.2, Math.min(peakLift * 0.55 + 1.0, 5.5));
+  const peakY = Math.max(2.4, Math.min(peakLift * 0.55 + 1.0, 5.5));
 
-  k.push({
-    frame: CRUISE_END + 30,
-    position: [px - 8, peakY + 1.5, 4.5],
-    lookAt: [px, peakY * 0.6, 0],
-    fov: 30,
-  });
-  k.push({
-    frame: APPROACH_END,
-    position: [px - 3, peakY + 0.4, 2.8],
-    lookAt: [px, peakY * 0.55, -0.2],
-    fov: 26,
-  });
+  if (hasContent) {
+    k.push({
+      frame: CRUISE_END + 30,
+      position: [px - 7, peakY + 1.6, Z_FLOOR + 1.5],
+      lookAt: [px, peakY * 0.6, 0],
+      fov: 30,
+    });
+    k.push({
+      frame: APPROACH_END,
+      position: [px - 3, peakY + 0.5, Z_FLOOR + 0.4],
+      lookAt: [px, peakY * 0.55, 0],
+      fov: 26,
+    });
+    // -------------------- 660..720 Canyon HOLD (near-stationary) -----------
+    // 60-frame near-stationary moment — the climax. Camera barely drifts so
+    // the highlight glow + caption can land.
+    k.push({
+      frame: APPROACH_END + 25,
+      position: [px - 1.2, peakY + 0.3, Z_FLOOR + 0.2],
+      lookAt: [px + 0.8, peakY * 0.55, 0],
+      fov: 24,
+    });
+    k.push({
+      frame: APPROACH_END + 50,
+      position: [px + 0.4, peakY + 0.3, Z_FLOOR + 0.2],
+      lookAt: [px + 1.5, peakY * 0.55, 0],
+      fov: 24,
+    });
+    k.push({
+      frame: CANYON_END,
+      position: [px + 2.2, peakY + 1.4, Z_FLOOR + 1.2],
+      lookAt: [px + 1.5, peakY * 0.5, 0],
+      fov: 28,
+    });
+  } else {
+    // Empty year: glide gently — no climax, no canyon.
+    k.push({
+      frame: CRUISE_END + 60,
+      position: [span * 0.2, 8, 12],
+      lookAt: [0, 1.5, 0],
+      fov: 40,
+    });
+    k.push({
+      frame: CANYON_END,
+      position: [span * 0.15, 10, 14],
+      lookAt: [0, 1.5, 0],
+      fov: 42,
+    });
+  }
 
-  // -------------------- 660..750 Canyon moment ------------------------------
-  // Slow arc THROUGH the peak district. The camera passes the peak with the
-  // glow active. Z dips to 1.8 (closest approach), FOV 24° (most telephoto).
-  k.push({
-    frame: APPROACH_END + 30,
-    position: [px - 0.5, peakY + 0.2, 1.8],
-    lookAt: [px + 1.0, peakY * 0.55, 0],
-    fov: 24,
-  });
-  k.push({
-    frame: APPROACH_END + 60,
-    position: [px + 1.2, peakY + 0.4, 2.2],
-    lookAt: [px + 2.5, peakY * 0.5, 0],
-    fov: 26,
-  });
-  k.push({
-    frame: CANYON_END,
-    position: [px + 4, peakY + 2.0, 4.5],
-    lookAt: [px + 2, peakY * 0.4, 0],
-    fov: 30,
-  });
-
-  // -------------------- 750..840 Emergence + apex ---------------------------
-  // Pull back, rise, slight Y-rotation to reveal the whole year.
+  // -------------------- 720..810 Emergence + wide reveal --------------------
   k.push({
     frame: CANYON_END + 45,
-    position: [span * 0.25, 12, 14],
+    position: [span * 0.25, 12, 16],
     lookAt: [0, 1.8, 0],
     fov: 38,
   });
   k.push({
     frame: EMERGE_END,
-    position: [span * 0.08, 15, 19],
+    position: [span * 0.1, 11, 18],
     lookAt: [0, 1.8, 0],
-    fov: 40,
+    fov: 38,
   });
 
-  // -------------------- 840..900 Postcard hold ------------------------------
+  // -------------------- 810..900 Chart-out (side profile) -------------------
+  // The reveal: camera slides to a near-side pose so the year reads as a 1D
+  // histogram silhouette. Y low, Z large, FOV tight (telephoto compresses the
+  // year into a chart-like ribbon).
+  k.push({
+    frame: EMERGE_END + 45,
+    position: [0, 4, 24],
+    lookAt: [0, 2, 0],
+    fov: 32,
+  });
   k.push({
     frame: TOTAL,
-    position: [span * 0.05, 16, 22],
+    position: [0, 2.5, 28],
     lookAt: [0, 2, 0],
-    fov: 42,
+    fov: 28,
   });
 
-  // Ensure sorted by frame (helps sampleRig's bracket search be stable).
   k.sort((a, b) => a.frame - b.frame);
   return k;
 }
@@ -279,21 +379,29 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
   resolution: _resolution,
 }) => {
   const { width, height } = useVideoConfig();
+  const frame = useCurrentFrame();
   const placements = useMemo(() => layoutBars(data), [data]);
+  const hasContent = data.totalContributions > 0;
+  const densityCurve = useMemo(
+    () => buildRelativeDensityCurve(placements, 64, 2.5),
+    [placements],
+  );
   const peak = useMemo(
     () => pickPeakTarget(data, placements, 0),
     [data, placements],
   );
   const keyframes = useMemo(
-    () => buildKeyframes(data, placements, peak),
-    [data, placements, peak],
+    () => buildKeyframes(data, placements, peak, densityCurve, hasContent),
+    [data, placements, peak, densityCurve, hasContent],
   );
   const p = palette(theme);
 
-  // Lower-third watermark: persistent during cruise + canyon so social-loop
-  // viewers always see attribution + year, regardless of which moment they
-  // sample.
-  const watermarkOpacity = useMemo(() => 0, []); // placeholder, computed below
+  // Sample the camera X at the current frame and pass it to <Skyline> so
+  // bars rise into existence as the camera approaches.
+  const cameraX = useMemo(
+    () => sampleRig(frame, keyframes).position[0],
+    [frame, keyframes],
+  );
 
   return (
     <AbsoluteFill style={{ backgroundColor: p.background }}>
@@ -303,19 +411,23 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.25,
+          toneMappingExposure: 1.2,
           outputColorSpace: THREE.SRGBColorSpace,
         }}
         style={{ backgroundColor: p.background }}
       >
-        {/* Exponential fog softens far-distance bars into the background and
-            adds depth cue during canyon dives. ANGLE-safe (built into Three.js
-            standard material). */}
-        <fogExp2 attach="fog" args={[p.background, 0.018]} />
+        {/* Lighter fog (0.010) — v2 0.018 was eating mid-tones and flattening
+            L1-L3 distinction at distance. */}
+        <fogExp2 attach="fog" args={[p.background, 0.010]} />
         <Lighting theme={theme} />
         <CameraRig keyframes={keyframes} />
-        <Skyline year={data} theme={theme} />
-        {peak.highlight.length > 0 && (
+        <Skyline
+          year={data}
+          theme={theme}
+          cameraX={cameraX}
+          buildLeadDistance={BUILD_LEAD}
+        />
+        {peak.highlight.length > 0 && hasContent && (
           <Sequence
             from={APPROACH_END - 10}
             durationInFrames={CANYON_END - APPROACH_END + 30}
@@ -330,7 +442,7 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
         )}
       </ThreeCanvas>
 
-      {/* Title card — overlay on top of already-visible 3D city. */}
+      {/* Title card — overlays the live build. */}
       <Captions
         theme={theme}
         visibleFromFrame={0}
@@ -340,7 +452,8 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
       >
         <div style={{ fontSize: 88, fontWeight: 700 }}>{username}</div>
         <div style={{ fontSize: 60, marginTop: 16, opacity: 0.85 }}>
-          {data.year} · {data.totalContributions.toLocaleString()} contributions
+          {data.year} · {data.totalContributions.toLocaleString()} contribution
+          {data.totalContributions === 1 ? "" : "s"}
         </div>
       </Captions>
 
@@ -349,16 +462,29 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
         username={username}
         year={data.year}
         fromFrame={TITLE_END}
-        toFrame={EMERGE_END}
+        toFrame={EMERGE_END - 30}
         theme={theme}
       />
 
-      {/* Canyon-moment caption — folded into the fly-through, not a snap. */}
-      {peak.caption && (
+      {/* Empty-year contemplative caption (replaces canyon caption). */}
+      {!hasContent && (
+        <Captions
+          theme={theme}
+          visibleFromFrame={CRUISE_END}
+          visibleToFrame={EMERGE_END - 30}
+          placement="bottom"
+          fadeFrames={20}
+        >
+          A quiet year. The graph took a breath.
+        </Captions>
+      )}
+
+      {/* Canyon-moment caption — observational, magnitude-agnostic. */}
+      {peak.caption && hasContent && (
         <Captions
           theme={theme}
           visibleFromFrame={APPROACH_END + 5}
-          visibleToFrame={CANYON_END + 20}
+          visibleToFrame={CANYON_END + 15}
           placement="bottom"
           fadeFrames={14}
         >
@@ -366,21 +492,15 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
         </Captions>
       )}
 
-      {/* Outro card. */}
-      <Captions
+      {/* Outro: side-profile chart card. */}
+      <ChartOutro
+        year={data.year}
+        total={data.totalContributions}
+        username={username}
+        fromFrame={EMERGE_END + 20}
+        toFrame={TOTAL}
         theme={theme}
-        visibleFromFrame={EMERGE_END - 20}
-        visibleToFrame={TOTAL}
-        placement="center"
-        fadeFrames={20}
-      >
-        <div style={{ fontSize: 80, fontWeight: 700 }}>
-          {data.totalContributions.toLocaleString()} contributions
-        </div>
-        <div style={{ fontSize: 48, marginTop: 12, opacity: 0.85 }}>
-          @{username.replace(/^@/, "")} · {data.year}
-        </div>
-      </Captions>
+      />
     </AbsoluteFill>
   );
 };
@@ -424,6 +544,67 @@ const LowerThirdWatermark: React.FC<{
         }}
       >
         @{username.replace(/^@/, "")} · {year}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/**
+ * Chart-out overlay during the side-profile pose: simple corner card with
+ * year + total formatted as a data line, sitting above the silhouette.
+ */
+const ChartOutro: React.FC<{
+  year: number;
+  total: number;
+  username: string;
+  fromFrame: number;
+  toFrame: number;
+  theme: SkylineYearProps["theme"];
+}> = ({ year, total, username, fromFrame, toFrame, theme }) => {
+  const frame = useCurrentFrame();
+  const p = palette(theme);
+  const opacity = interpolate(
+    frame,
+    [fromFrame, fromFrame + 25, toFrame - 10, toFrame],
+    [0, 1, 1, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  if (opacity <= 0) return null;
+  return (
+    <AbsoluteFill
+      style={{
+        justifyContent: "flex-start",
+        alignItems: "center",
+        padding: 100,
+        pointerEvents: "none",
+        opacity,
+      }}
+    >
+      <div
+        style={{
+          color: p.captionText,
+          textShadow: `0 2px 12px ${p.captionShadow}`,
+          fontFamily:
+            'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 32,
+            opacity: 0.7,
+            letterSpacing: 4,
+            textTransform: "uppercase",
+          }}
+        >
+          @{username.replace(/^@/, "")}
+        </div>
+        <div style={{ fontSize: 96, fontWeight: 700, marginTop: 8 }}>
+          {year}
+        </div>
+        <div style={{ fontSize: 52, marginTop: 4, opacity: 0.9 }}>
+          {total.toLocaleString()} contribution{total === 1 ? "" : "s"}
+        </div>
       </div>
     </AbsoluteFill>
   );

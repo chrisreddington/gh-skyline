@@ -20,7 +20,9 @@ export const themes: Record<Theme, ThemePalette> = {
     background: "#0d1117",
     captionText: "#f0f6fc",
     captionShadow: "rgba(0,0,0,0.6)",
-    highlight: "#ffd166",
+    // Highlight = brightened L4 so peak bars stay in the GitHub palette family
+    // instead of introducing a gold/marketing colour the platform never uses.
+    highlight: "#7ee787",
     rim: "#1f6feb",
   },
   light: {
@@ -28,7 +30,7 @@ export const themes: Record<Theme, ThemePalette> = {
     background: "#ffffff",
     captionText: "#1f2328",
     captionShadow: "rgba(255,255,255,0.6)",
-    highlight: "#bf8700",
+    highlight: "#216e39",
     rim: "#0969da",
   },
 };
@@ -87,16 +89,28 @@ export interface LevelMaterial {
 
 export function levelMaterial(level: BucketLevel, theme: Theme): LevelMaterial {
   const p = themes[theme];
-  // Use the level's own colour as the emissive tint so each bucket reads
-  // distinctly (instead of every level glowing the same hero green).
+  // Each level's emissive uses its own base hue (preserves GitHub palette
+  // identity per bucket) but with progressively brighter intensity. L4 jumps
+  // dramatically to mark "this is the peak" without leaving the green family.
   const tints: readonly string[] = p.levels;
-  const intensities = theme === "dark"
-    ? [0, 0.35, 0.65, 1.0, 1.6]
-    : [0, 0.15, 0.3,  0.5, 0.8];
+  // Big gap between L3 and L4 so peak tier reads as distinct landmarks.
+  const darkIntensities = [0, 0.25, 0.55, 1.10, 2.40];
+  const lightIntensities = [0, 0.06, 0.15, 0.30, 0.65];
+  const intensities = theme === "dark" ? darkIntensities : lightIntensities;
+  // L4 uses a brightened tint pulled toward white-green so it pops over L3
+  // even with similar intensity.
+  const darkL4Tint = "#a8f5b8";
+  const lightL4Tint = "#216e39";
+  const emissive =
+    level === 4
+      ? theme === "dark"
+        ? darkL4Tint
+        : lightL4Tint
+      : tints[level] ?? "#000000";
   return {
-    emissive: tints[level] ?? tints[0],
+    emissive,
     emissiveIntensity: intensities[level] ?? 0,
-    roughness: 0.25,
-    metalness: 0.1,
+    roughness: 0.35,
+    metalness: 0.05,
   };
 }

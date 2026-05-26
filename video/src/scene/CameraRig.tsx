@@ -122,6 +122,88 @@ export function crowdDensityAtX(
   return active / inWindow;
 }
 
+/**
+ * Year-relative density curve: for each X sample along the year, return a
+ * normalized [0,1] density value where 0 = the year's quietest stretch and
+ * 1 = the year's busiest stretch. This is the adaptive workhorse that lets
+ * the camera/speed grammar feel right for any developer:
+ *
+ *  - Always-active contributor: small absolute variation gets stretched so
+ *    the camera still swells/ebbs between their relatively-busy and
+ *    relatively-quiet weeks.
+ *  - Bursty contributor: peaks land hard against flat stretches.
+ *  - Quiet contributor: even tiny bursts get visual emphasis.
+ *  - Empty year: returns all zeros (composition uses this to skip canyon).
+ */
+export interface DensitySample {
+  readonly x: number;
+  readonly density: number;
+}
+
+export function buildRelativeDensityCurve(
+  placements: BarPlacement[],
+  sampleCount = 64,
+  windowSize = 2.5,
+): DensitySample[] {
+  const inYear = placements.filter((p) => p.inYear);
+  if (inYear.length === 0) {
+    return [];
+  }
+  let minX = inYear[0].x;
+  let maxX = inYear[0].x;
+  for (const p of inYear) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+  }
+  const span = Math.max(maxX - minX, 1);
+  // Compute mean height in window per sample.
+  const raw: DensitySample[] = [];
+  for (let i = 0; i < sampleCount; i++) {
+    const x = minX + (i / (sampleCount - 1)) * span;
+    let sum = 0;
+    let n = 0;
+    for (const p of inYear) {
+      if (Math.abs(p.x - x) <= windowSize) {
+        sum += p.height;
+        n++;
+      }
+    }
+    raw.push({ x, density: n > 0 ? sum / n : 0 });
+  }
+  // Normalize against this curve's own min/max so the year always has
+  // visual range. If the whole year is flat (e.g. empty), every sample is
+  // 0 and the composition treats it as "quiet year" and skips canyon.
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const s of raw) {
+    if (s.density < lo) lo = s.density;
+    if (s.density > hi) hi = s.density;
+  }
+  if (hi <= lo + 1e-6) {
+    return raw.map((s) => ({ x: s.x, density: 0 }));
+  }
+  return raw.map((s) => ({ x: s.x, density: (s.density - lo) / (hi - lo) }));
+}
+
+/** Linear-interpolate a DensitySample curve at arbitrary x. */
+export function densityAt(curve: DensitySample[], x: number): number {
+  if (curve.length === 0) return 0;
+  const first = curve[0];
+  const last = curve[curve.length - 1];
+  if (x <= first.x) return first.density;
+  if (x >= last.x) return last.density;
+  // Binary search would be faster but N=64 keeps this trivially cheap.
+  for (let i = 0; i < curve.length - 1; i++) {
+    const a = curve[i];
+    const b = curve[i + 1];
+    if (x >= a.x && x <= b.x) {
+      const t = (x - a.x) / Math.max(b.x - a.x, 1e-9);
+      return a.density + (b.density - a.density) * t;
+    }
+  }
+  return last.density;
+}
+
 interface CameraRigProps {
   keyframes: CameraKeyframe[];
 }
