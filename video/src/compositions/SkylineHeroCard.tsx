@@ -6,7 +6,7 @@ import React, { useMemo } from "react";
 import * as THREE from "three";
 import { AbsoluteFill, type CalculateMetadataFunction } from "remotion";
 import { ThreeCanvas } from "@remotion/three";
-import { PerspectiveCamera, Text } from "@react-three/drei";
+import { useThree } from "@react-three/fiber";
 import { z } from "zod";
 
 import {
@@ -15,10 +15,9 @@ import {
   type SkylineDocument,
   type Theme,
 } from "../schema";
-import { Lighting } from "../scene/Lighting";
 import { Skyline } from "../scene/Skyline";
 import { palette } from "../scene/theme";
-import { MONA_SANS_FONT_FAMILY, MONA_SANS_MEDIUM } from "../scene/typography";
+import { MONA_SANS_FONT_FAMILY } from "../scene/typography";
 import { gridGeometry } from "../utils/grid";
 import { yearDepthOffsets } from "./fullLayout";
 
@@ -70,14 +69,11 @@ function baseDimensions(doc: SkylineDocument) {
 }
 
 const HeroBaseplate: React.FC<{
-  doc: SkylineDocument;
   theme: Theme;
   width: number;
   depth: number;
   centerZ: number;
-  frontZ: number;
-}> = ({ doc, theme, width, depth, centerZ, frontZ }) => {
-  const p = palette(theme);
+}> = ({ theme, width, depth, centerZ }) => {
   return (
     <group>
       <mesh position={[0, -0.1, centerZ]} receiveShadow>
@@ -87,30 +83,22 @@ const HeroBaseplate: React.FC<{
           roughness={0.86}
         />
       </mesh>
-      <Text
-        position={[-width / 2 + 1.3, 0.08, frontZ - 0.25]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.62}
-        font={MONA_SANS_MEDIUM}
-        color={p.captionText}
-        anchorX="left"
-        anchorY="middle"
-      >
-        @{doc.username.replace(/^@/, "")}
-      </Text>
-      <Text
-        position={[width / 2 - 1.3, 0.08, frontZ - 0.25]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.54}
-        font={MONA_SANS_MEDIUM}
-        color={p.captionText}
-        anchorX="right"
-        anchorY="middle"
-      >
-        {yearRange(doc)}
-      </Text>
     </group>
   );
+};
+
+const HeroCamera: React.FC<{ centerZ: number }> = ({ centerZ }) => {
+  const { camera } = useThree();
+  React.useLayoutEffect(() => {
+    const perspective = camera as THREE.PerspectiveCamera;
+    perspective.position.set(0, 52, centerZ - 82);
+    perspective.fov = 43;
+    perspective.near = 0.1;
+    perspective.far = 220;
+    perspective.lookAt(0, 0.6, centerZ);
+    perspective.updateProjectionMatrix();
+  }, [camera, centerZ]);
+  return null;
 };
 
 export const SkylineHeroCard: React.FC<SkylineHeroCardProps> = ({ data, theme }) => {
@@ -137,15 +125,8 @@ export const SkylineHeroCard: React.FC<SkylineHeroCardProps> = ({ data, theme })
         <ambientLight intensity={1.1} />
         <directionalLight position={[0, 30, -20]} intensity={1.2} color="#ffffff" />
         <directionalLight position={[30, 15, 20]} intensity={0.8} color="#7ee787" />
-        <PerspectiveCamera
-          makeDefault
-          position={[0, 92, base.centerZ - 6]}
-          fov={38}
-          near={0.1}
-          far={220}
-          onUpdate={(camera) => camera.lookAt(0, 0, base.centerZ)}
-        />
-        <HeroBaseplate doc={data} theme={theme} {...base} />
+        <HeroCamera centerZ={base.centerZ} />
+        <HeroBaseplate theme={theme} {...base} />
         {data.years.map((year, idx) => (
           <group key={year.year} position={[0, 0, offsets[idx]]}>
             <Skyline
@@ -163,7 +144,7 @@ export const SkylineHeroCard: React.FC<SkylineHeroCardProps> = ({ data, theme })
           justifyContent: "flex-end",
           alignItems: "center",
           padding: 64,
-          paddingBottom: 42,
+          paddingBottom: 36,
           pointerEvents: "none",
         }}
       >
@@ -175,13 +156,13 @@ export const SkylineHeroCard: React.FC<SkylineHeroCardProps> = ({ data, theme })
             textAlign: "center",
           }}
         >
-          <div style={{ fontSize: 22, opacity: 0.82, letterSpacing: 4 }}>
+          <div style={{ fontSize: 20, opacity: 0.82, letterSpacing: 4 }}>
             {firstYear ? `Committed since ${firstYear}.` : yearRange(data)}
           </div>
-          <div style={{ fontSize: 52, fontWeight: 760, marginTop: 8 }}>
+          <div style={{ fontSize: 48, fontWeight: 760, marginTop: 6 }}>
             {total.toLocaleString()} contributions. Your skyline.
           </div>
-          <div style={{ fontSize: 22, marginTop: 16, opacity: 0.78 }}>
+          <div style={{ fontSize: 20, marginTop: 12, opacity: 0.78 }}>
             Let's build. &nbsp;□ gh-skyline
           </div>
         </div>

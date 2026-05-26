@@ -69,6 +69,7 @@ import {
   gridGeometry,
   type BarPlacement,
 } from "../utils/grid";
+import { MONA_SANS_FONT_FAMILY } from "../scene/typography";
 
 export const skylineYearPropsSchema = z.object({
   data: yearSchema,
@@ -537,8 +538,7 @@ const LowerThirdWatermark: React.FC<{
         style={{
           color: p.captionText,
           textShadow: `0 2px 12px ${p.captionShadow}`,
-          fontFamily:
-            'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+          fontFamily: `"${MONA_SANS_FONT_FAMILY}", ui-sans-serif, system-ui, sans-serif`,
           fontSize: 36,
           fontWeight: 500,
           letterSpacing: 0.5,
@@ -585,8 +585,7 @@ const ChartOutro: React.FC<{
         style={{
           color: p.captionText,
           textShadow: `0 2px 12px ${p.captionShadow}`,
-          fontFamily:
-            'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+          fontFamily: `"${MONA_SANS_FONT_FAMILY}", ui-sans-serif, system-ui, sans-serif`,
           textAlign: "center",
         }}
       >

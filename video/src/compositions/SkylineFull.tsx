@@ -12,7 +12,6 @@ import {
   type CalculateMetadataFunction,
 } from "remotion";
 import { ThreeCanvas } from "@remotion/three";
-import { Text } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import { z } from "zod";
 
@@ -28,7 +27,7 @@ import { Captions } from "../scene/Captions";
 import { Lighting } from "../scene/Lighting";
 import { Skyline } from "../scene/Skyline";
 import { palette } from "../scene/theme";
-import { MONA_SANS_FONT_FAMILY, MONA_SANS_MEDIUM } from "../scene/typography";
+import { MONA_SANS_FONT_FAMILY } from "../scene/typography";
 import { gridGeometry } from "../utils/grid";
 import { allocate, DEFAULT_TIMING, type Allocation } from "../utils/timing";
 import {
@@ -134,7 +133,7 @@ export const SkylineFull: React.FC<SkylineFullProps> = ({
         <DynamicFog color={p.background} density={state.fog} />
         <Lighting theme={theme} ambientIntensity={state.ambient} rimIntensity={state.rim} />
         <CameraRig keyframes={keyframes} />
-        <SharedBaseplate username={data.username} range={range} theme={theme} {...base} />
+        <SharedBaseplate theme={theme} {...base} />
         {data.years.map((year, idx) => {
           const cfg = configs.find((c) => c.yearIdx === idx);
           return (
@@ -182,15 +181,11 @@ function baseDimensions(doc: SkylineDocument) {
 }
 
 const SharedBaseplate: React.FC<{
-  username: string;
-  range: string;
   theme: Theme;
   width: number;
   depth: number;
   centerZ: number;
-  frontZ: number;
-}> = ({ username, range, theme, width, depth, centerZ, frontZ }) => {
-  const p = palette(theme);
+}> = ({ theme, width, depth, centerZ }) => {
   return (
     <group>
       <mesh position={[0, -0.1, centerZ]} receiveShadow>
@@ -200,28 +195,6 @@ const SharedBaseplate: React.FC<{
           roughness={0.86}
         />
       </mesh>
-      <Text
-        position={[-width / 2 + 1.3, 0.08, frontZ - 0.25]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.62}
-        font={MONA_SANS_MEDIUM}
-        color={p.captionText}
-        anchorX="left"
-        anchorY="middle"
-      >
-        @{username.replace(/^@/, "")}
-      </Text>
-      <Text
-        position={[width / 2 - 1.3, 0.08, frontZ - 0.25]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.54}
-        font={MONA_SANS_MEDIUM}
-        color={p.captionText}
-        anchorX="right"
-        anchorY="middle"
-      >
-        {range}
-      </Text>
     </group>
   );
 };

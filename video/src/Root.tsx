@@ -24,6 +24,17 @@ import {
   skylineHeroCardPropsSchema,
   calculateSkylineHeroCardMetadata,
 } from "./compositions/SkylineHeroCard";
+import {
+  WrappedOrigin,
+  WrappedPeak,
+  WrappedReturn,
+  WrappedSteady,
+  WrappedStreak,
+  wrappedCardPropsSchema,
+  calculateWrappedCardMetadata,
+  WRAPPED_CARD_DURATION,
+  WRAPPED_CARD_FPS,
+} from "./compositions/WrappedCards";
 
 import sampleYear from "../fixtures/sample-year.json";
 import sampleFull from "../fixtures/sample-full.json";
@@ -98,6 +109,32 @@ export const Root: React.FC = () => {
           theme: "dark" as const,
         }}
       />
+      {[
+        ["WrappedPeak", WrappedPeak],
+        ["WrappedStreak", WrappedStreak],
+        ["WrappedReturn", WrappedReturn],
+        ["WrappedOrigin", WrappedOrigin],
+        ["WrappedSteady", WrappedSteady],
+      ].map(([id, component]) => (
+        <Composition
+          key={id as string}
+          id={id as string}
+          component={component as React.FC<{
+            data: SkylineDocument;
+            theme: "light" | "dark";
+          }>}
+          schema={wrappedCardPropsSchema}
+          fps={WRAPPED_CARD_FPS}
+          durationInFrames={WRAPPED_CARD_DURATION}
+          width={1200}
+          height={630}
+          calculateMetadata={calculateWrappedCardMetadata}
+          defaultProps={{
+            data: sampleFullDoc,
+            theme: "dark" as const,
+          }}
+        />
+      ))}
     </>
   );
 };
