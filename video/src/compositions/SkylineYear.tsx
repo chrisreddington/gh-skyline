@@ -97,14 +97,21 @@ export const calculateSkylineYearMetadata: CalculateMetadataFunction<
   };
 };
 
-// Phase boundaries (absolute frames).
-const TITLE_END = 75;
-const ENTRY_END = 180;
-const CRUISE_END = 600;
-const APPROACH_END = 660;
-const CANYON_END = 720;
-const EMERGE_END = 810;
-const TOTAL = SKYLINE_YEAR_DURATION_FRAMES;
+// Phase boundaries (absolute frames @ 30fps = 30s total).
+//
+// v10 changes:
+//  - Frame 0 = frame 900: wide overhead overview (seamless loop).
+//  - TITLE_END = 90f (3s): full title-card establishing shot of the year profile.
+//  - ENTRY_END = 150f (5s): 2s dive to street level (smoother than 1.5s).
+//  - CRUISE_END = 570 (19s): same total cruise time.
+//  - APPROACH/CANYON/EMERGE unchanged.
+const TITLE_END = 90;       // 3s — wide profile overview + title card
+const ENTRY_END = 150;      // 5s — descended to street level, cruise begins
+const CRUISE_END = 570;     // 19s — density-weighted cruise along the year
+const APPROACH_END = 660;   // 22s — 3s smooth decel into peak district
+const CANYON_END = 780;     // 26s — 4s canyon hold to celebrate the peak
+const EMERGE_END = 810;     // 27s — 1s pull-back to orbit start
+const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 900 — 3s orbit arc back to frame 0
 
 // Z floor — camera never goes closer than this in Z so it doesn't clip into
 // bars (bars span Z ±3.45 with originZ=-3 and cellSize=0.9 → far edge ≈ 3.5).
@@ -250,76 +257,77 @@ function buildKeyframes(
 
   const k: CameraKeyframe[] = [];
 
-  // -------------------- 0..75 Opening: empty grid → wave begins ------------
-  // Frame 0: camera sits behind the year's left edge so cameraX < originX - lead.
-  // ALL bars have revealT=0 → invisible. The shot reads as: empty grid +
-  // title overlay. As camera flies forward during 0→75, the build wave
-  // sweeps across the first weeks of the year — the "year being built".
-  const startCamX = geom.originX - BUILD_LEAD - 4;
+  // The "home" position is the wide overview used for both frame 0 and the
+  // final frame — this makes the sequence loop seamlessly.
+  // Camera sits above and behind the year midpoint, showing the full skyline
+  // silhouette as an establishing shot before the dive begins.
+  const homePos: [number, number, number] = [midActiveX, 14, 42];
+  const homeLook: [number, number, number] = [midActiveX, 2.5, 0];
+  const homeFov = 58;
+
+  // -------------------- 0..90 Title: wide overview establishing shot --------
+  // cut:true → zero outgoing velocity so the C¹ spline doesn't overshoot.
+  // The camera holds almost still (barely breathing-in zoom) for 3 seconds
+  // while the title card overlays the full-year silhouette below it.
   k.push({
     frame: 0,
-    position: [startCamX, 12, 15],
-    lookAt: [geom.originX + 4, 1.5, 0],
-    fov: 44,
+    position: homePos,
+    lookAt: homeLook,
+    fov: homeFov,
+    cut: true,
   });
+  // Breathe gently in toward the year during the title hold.
   k.push({
-    frame: TITLE_END,
-    position: [geom.originX - 2.5, 8, 12],
-    lookAt: [geom.originX + 5, 1.6, 0],
+    frame: 60,
+    position: [midActiveX, 13.0, 39],
+    lookAt: [midActiveX, 2.5, 0],
+    fov: 56,
+  });
+
+  // -------------------- 90..150 Entry: dive to street level (2s) -----------
+  // No intermediate keyframe at TITLE_END — let the C¹ spline naturally arc
+  // from the overview hold (frame 60, still centred) to the street-level entry
+  // position. Without an extra waypoint the camera eases leftward and downward
+  // as one flowing movement rather than a sharp pan at the end of the title.
+  k.push({
+    frame: ENTRY_END,  // 150
+    position: [geom.originX - 1.5, 4.5, Z_FLOOR + 2.5],
+    lookAt: [geom.originX + 4, 1.8, 0],
     fov: 42,
   });
 
-  // -------------------- 75..180 Entry --------------------------------------
-  k.push({
-    frame: ENTRY_END,
-    position: [geom.originX - 1.5, 4.5, Z_FLOOR + 3.5],
-    lookAt: [geom.originX + 4, 1.8, 0],
-    fov: 39,
-  });
-
-  // -------------------- 180..600 Cruise with adaptive speed/density --------
-  // Use the speed-remap so time spent in dense stretches > sparse stretches.
-  // Z and FOV "breathe" laterally (Y + density-driven dwell) rather than
-  // diving close (Z-zoom) — telephoto sweep reads more cinematic.
-  const cruiseSamples = 16;
-  let smoothedDensity = 0;
-  for (let i = 0; i <= cruiseSamples; i++) {
+  // -------------------- 150..570 Cruise with adaptive speed/density --------
+  // 5 samples starting at i=1 (i=0 would duplicate the ENTRY_END keyframe).
+  // EWMA smoothedDensity is pre-seeded from the entry position so the first
+  // cruise sample blends correctly.
+  const cruiseSamples = 5;
+  let smoothedDensity = densityAt(densityCurve, geom.originX);
+  for (let i = 1; i <= cruiseSamples; i++) {
     const u = i / cruiseSamples;
     const t = lerpSpeedRemap(speedRemap, u);
     const x = geom.originX + t * cruiseSpan;
     const rawDensity = densityAt(densityCurve, x);
-    const density = i === 0 ? rawDensity : smoothedDensity * 0.72 + rawDensity * 0.28;
-    smoothedDensity = density;
+    smoothedDensity = smoothedDensity * 0.75 + rawDensity * 0.25;
     const lift = peakLiftAtX(x, placements);
-    // Z: wide for sparse, modestly tighter for dense — stay outside the bars.
-    const z = Math.max(Z_FLOOR, 19 - density * (19 - Z_FLOOR));
-    // Y: ride canopy height + clearance above peaks.
+    const z = Math.max(Z_FLOOR, 19 - smoothedDensity * (19 - Z_FLOOR));
     const y = Math.max(5.0, 5.4 + (lift - 2.4) * 0.45);
-    // FOV: 42° sparse → 38° dense (narrow window; no fish-eye proximity).
-    const fov = 42 - density * 4;
-    const lookY = density > 0.4 ? 1.2 + density * 1.0 : 0.8;
+    const fov = 42 - smoothedDensity * 4;
+    const lookY = smoothedDensity > 0.4 ? 1.2 + smoothedDensity * 1.0 : 0.8;
     const frame = ENTRY_END + Math.round(u * (CRUISE_END - ENTRY_END));
-    k.push({
-      frame,
-      position: [x, y, z],
-      lookAt: [x + 4, lookY, 0],
-      fov,
-    });
+    k.push({ frame, position: [x, y, z], lookAt: [x + 4, lookY, 0], fov });
   }
 
-  // -------------------- 600..660 Peak approach ------------------------------
+  // -------------------- 570..660 Peak approach (3s) -------------------------
   const px = peak.centerX;
   const peakLift = peakLiftAtX(px, placements);
   const peakY = Math.max(2.4, Math.min(peakLift * 0.55 + 1.0, 5.5));
 
   if (hasContent) {
-    // Two bridge keys only — let the Bezier easing do the deceleration work.
-    // Extra waypoints in 60 frames created a stutter; fewer yields a smooth
-    // cinematic pullback into the canyon.
+    // Bridge: halfway between cruise end X and peak, 40 frames in.
     const bridgeX = cruiseEndX + (px - cruiseEndX) * 0.5;
     k.push({
-      frame: CRUISE_END + 20,
-      position: [bridgeX, 9.0, Z_FLOOR + 7.0],
+      frame: CRUISE_END + 40,
+      position: [bridgeX, 8.5, Z_FLOOR + 6.5],
       lookAt: [px, 2.0, 0],
       fov: 38,
     });
@@ -329,77 +337,74 @@ function buildKeyframes(
       lookAt: [px, peakY * 0.55, 0],
       fov: 32,
     });
-    // -------------------- 660..720 Canyon HOLD (near-stationary) -----------
-    // 60-frame near-stationary moment — the climax. Camera barely drifts so
-    // the highlight glow + caption can land.
+
+    // -------------------- 660..780 Canyon HOLD (4s) ------------------------
+    // Three slow drift keyframes — linger on the peak.
     k.push({
-      frame: APPROACH_END + 30,
-      position: [px - 0.8, peakY + 0.8, Z_FLOOR + 3.6],
-      lookAt: [px + 1.0, peakY * 0.55, 0],
+      frame: APPROACH_END + 40,
+      position: [px - 1.0, peakY + 0.7, Z_FLOOR + 3.5],
+      lookAt: [px + 0.8, peakY * 0.5, 0],
+      fov: 29,
+    });
+    k.push({
+      frame: APPROACH_END + 80,
+      position: [px + 0.8, peakY + 0.5, Z_FLOOR + 3.4],
+      lookAt: [px + 1.5, peakY * 0.48, 0],
+      fov: 28,
+    });
+    k.push({
+      frame: CANYON_END,
+      position: [px + 2.5, peakY + 1.0, Z_FLOOR + 3.8],
+      lookAt: [px + 1.5, peakY * 0.5, 0],
       fov: 30,
     });
-    k.push({
-      frame: CANYON_END,
-      position: [px + 2.0, peakY + 1.4, Z_FLOOR + 3.8],
-      lookAt: [px + 1.5, peakY * 0.5, 0],
-      fov: 32,
-    });
   } else {
-    // Empty year: glide gently — no climax, no canyon.
+    // Empty year: gentle glide over the year's centre before emergence.
     k.push({
       frame: CRUISE_END + 60,
-      position: [span * 0.2, 8, 12],
-      lookAt: [0, 1.5, 0],
-      fov: 40,
+      position: [midActiveX, 8, 20],
+      lookAt: [midActiveX, 1.5, 0],
+      fov: 44,
     });
     k.push({
       frame: CANYON_END,
-      position: [span * 0.15, 10, 14],
-      lookAt: [0, 1.5, 0],
-      fov: 42,
+      position: [midActiveX, 10, 24],
+      lookAt: [midActiveX, 1.5, 0],
+      fov: 48,
     });
   }
 
-  // -------------------- 720..810 Emergence + wide reveal --------------------
-  k.push({
-    frame: CANYON_END + 20,
-    position: [px + 4, peakY + 2.6, Z_FLOOR + 5.8],
-    lookAt: [px + 2, 1.8, 0],
-    fov: 34,
-  });
-  // Outro framing is centred on where the contributions ACTUALLY live, not
-  // grid-center. For a partial year (e.g. 2026 with weeks 0..18 populated) the
-  // active midpoint is well to the left of X=0, so chart-out at X=0 would
-  // squish the silhouette into the side of the frame.
-  k.push({
-    frame: CANYON_END + 45,
-    position: [midActiveX, 12, 16],
-    lookAt: [midActiveX, 1.8, 0],
-    fov: 38,
-  });
+  // -------------------- 780..810 Emergence (1s) ----------------------------
   k.push({
     frame: EMERGE_END,
-    position: [midActiveX, 11, 18],
-    lookAt: [midActiveX, 1.8, 0],
-    fov: 38,
+    position: [midActiveX + 12, 9.5, 23],
+    lookAt: [midActiveX, 2.0, 0],
+    fov: 36,
   });
 
-  // -------------------- 810..900 Chart-out (side profile) -------------------
-  // The reveal: camera slides to a near-side pose so the year reads as a 1D
-  // histogram silhouette. Y low, Z large, FOV tight (telephoto compresses the
-  // year into a chart-like ribbon). Centred on midActiveX so partial years
-  // sit in the middle of the frame instead of squished to one side.
+  // -------------------- 810..900 Panoramic orbit → seamless loop -----------
+  // Camera arcs up and back, arriving exactly at homePos/homeLook/homeFov so
+  // the sequence loops without a visible cut.
+  // Three intermediate keyframes form a rising arc that smoothly decelerates
+  // to zero velocity at frame 900 (nextKf=null → C2=homePos in CameraRig).
   k.push({
-    frame: EMERGE_END + 45,
-    position: [midActiveX, 4, 24],
-    lookAt: [midActiveX, 2, 0],
-    fov: 32,
+    frame: EMERGE_END + 30,  // 840
+    position: [midActiveX + 6, 11.5, 30],
+    lookAt: [midActiveX, 2.2, 0],
+    fov: 42,
   });
   k.push({
-    frame: TOTAL,
-    position: [midActiveX, 2.5, 28],
-    lookAt: [midActiveX, 2, 0],
-    fov: 28,
+    frame: EMERGE_END + 60,  // 870
+    position: [midActiveX, 13.0, 38],
+    lookAt: [midActiveX, 2.4, 0],
+    fov: 56,
+  });
+  // Frame 900 = frame 0: exactly homePos so the loop is invisible.
+  k.push({
+    frame: TOTAL,  // 900
+    position: homePos,
+    lookAt: homeLook,
+    fov: homeFov,
   });
 
   k.sort((a, b) => a.frame - b.frame);
@@ -430,12 +435,17 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
   );
   const p = palette(theme);
 
-  // Sample the camera X at the current frame and pass it to <Skyline> so
-  // bars rise into existence as the camera approaches.
-  const cameraX = useMemo(
-    () => sampleRig(frame, keyframes).position[0],
-    [frame, keyframes],
-  );
+  // For the wide overview (frames 0→ENTRY_END) all bars must be visible so the
+  // establishing shot shows the full year silhouette. After ENTRY_END the camera
+  // is at the far-left start of the year, so camera-X-based reveal resumes
+  // naturally — bars are "already there" and the build wave begins from originX.
+  const cameraX = useMemo(() => {
+    if (frame <= ENTRY_END) {
+      // Use a large sentinel so all bars pass the reveal test.
+      return 1e6;
+    }
+    return sampleRig(frame, keyframes).position[0];
+  }, [frame, keyframes]);
 
   return (
     <AbsoluteFill style={{ backgroundColor: p.background }}>
@@ -536,6 +546,21 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
         toFrame={TOTAL}
         theme={theme}
       />
+
+      {/* WebGL warm-up cover: the canvas isn't ready on frame 0, causing a
+          1-frame black flash. Fade out from background over frames 0→8. */}
+      {frame <= 8 && (
+        <AbsoluteFill
+          style={{
+            backgroundColor: p.background,
+            opacity: interpolate(frame, [0, 1, 8], [1, 1, 0], {
+              extrapolateLeft: "clamp",
+              extrapolateRight: "clamp",
+            }),
+            pointerEvents: "none",
+          }}
+        />
+      )}
     </AbsoluteFill>
   );
 };

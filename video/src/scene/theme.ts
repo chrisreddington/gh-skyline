@@ -153,8 +153,11 @@ export function levelMaterial(level: BucketLevel, theme: Theme): LevelMaterial {
   // dramatically to mark "this is the peak" without leaving the green family.
   const tints: readonly string[] = p.levels;
   // Big gap between L3 and L4 so peak tier reads as distinct landmarks.
-  const darkIntensities = [0, 0.07, 0.14, 0.22, 0.34];
-  const lightIntensities = [0, 0.03, 0.07, 0.12, 0.2];
+  // Emissive is boosted significantly to counteract 3D lighting crushing the
+  // colour distinction — tall bars have shaded sides that make their base colour
+  // look darker, so we need extra emissive punch to restore the GitHub gradient.
+  const darkIntensities = [0, 0.10, 0.22, 0.38, 0.60];
+  const lightIntensities = [0, 0.04, 0.09, 0.16, 0.28];
   const intensities = theme === "dark" ? darkIntensities : lightIntensities;
   const emissive = tints[level] ?? "#000000";
   return {
