@@ -67,3 +67,36 @@ export function colourForLevel(level: BucketLevel, theme: Theme): string {
 export function palette(theme: Theme): ThemePalette {
   return themes[theme];
 }
+
+/**
+ * Per-level emissive treatment for bars. The base level colours (palette.levels)
+ * are perceptually crushed when rendered as dark PBR surfaces in a dark scene —
+ * splitting bars into one mesh per level with these emissive settings restores
+ * legibility and lets level 4 actively glow, which is the "wow" moment.
+ *
+ * Indices match BucketLevel (0..4). Level 0 is intentionally dead (no emissive)
+ * so empty days look like concrete; level 4 radiates so peak days read as
+ * landmarks even after MP4 compression.
+ */
+export interface LevelMaterial {
+  readonly emissive: string;
+  readonly emissiveIntensity: number;
+  readonly roughness: number;
+  readonly metalness: number;
+}
+
+export function levelMaterial(level: BucketLevel, theme: Theme): LevelMaterial {
+  const p = themes[theme];
+  // Use the level's own colour as the emissive tint so each bucket reads
+  // distinctly (instead of every level glowing the same hero green).
+  const tints: readonly string[] = p.levels;
+  const intensities = theme === "dark"
+    ? [0, 0.35, 0.65, 1.0, 1.6]
+    : [0, 0.15, 0.3,  0.5, 0.8];
+  return {
+    emissive: tints[level] ?? tints[0],
+    emissiveIntensity: intensities[level] ?? 0,
+    roughness: 0.25,
+    metalness: 0.1,
+  };
+}

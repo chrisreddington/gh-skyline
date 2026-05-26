@@ -7,6 +7,7 @@
  * outside transitions only the active year's mesh is rendered.
  */
 import React, { useMemo } from "react";
+import * as THREE from "three";
 import {
   AbsoluteFill,
   interpolate,
@@ -276,9 +277,15 @@ export const SkylineFull: React.FC<SkylineFullProps> = ({
       <ThreeCanvas
         width={width}
         height={height}
-        gl={{ antialias: true }}
+        gl={{
+          antialias: true,
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.25,
+          outputColorSpace: THREE.SRGBColorSpace,
+        }}
         style={{ backgroundColor: p.background }}
       >
+        <fogExp2 attach="fog" args={[p.background, 0.018]} />
         <Lighting theme={theme} />
         <CameraRig keyframes={keyframes} />
         <ActiveYearMeshes data={data} alloc={alloc} theme={theme} />

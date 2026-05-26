@@ -98,6 +98,30 @@ export function peakLiftAtX(
   return Math.min(maxLift, max + clearance);
 }
 
+/**
+ * Fraction of bars within `windowSize` of `x` that have meaningful height.
+ * Returns 0 for sparse stretches (empty weeks, weekend valleys) and ~1 for
+ * dense weeks. The composition uses this to dive Z (canyon) when crowded and
+ * pull back when sparse, producing the city/canyon camera grammar.
+ */
+export function crowdDensityAtX(
+  x: number,
+  placements: BarPlacement[],
+  windowSize = 2,
+): number {
+  let inWindow = 0;
+  let active = 0;
+  for (const p of placements) {
+    if (!p.inYear) continue;
+    if (Math.abs(p.x - x) <= windowSize) {
+      inWindow++;
+      if (p.height > 0.15) active++;
+    }
+  }
+  if (inWindow === 0) return 0;
+  return active / inWindow;
+}
+
 interface CameraRigProps {
   keyframes: CameraKeyframe[];
 }
