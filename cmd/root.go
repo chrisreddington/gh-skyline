@@ -19,13 +19,14 @@ import (
 
 // Command line variables and root command configuration
 var (
-	yearRange string
-	user      string
-	full      bool
-	debug     bool
-	web       bool
-	artOnly   bool
-	output    string // new output path flag
+	yearRange  string
+	user       string
+	full       bool
+	debug      bool
+	web        bool
+	artOnly    bool
+	output     string // new output path flag
+	jsonExport bool   // emit a JSON export alongside (or instead of) the STL
 )
 
 // rootCmd is the root command for the GitHub Skyline CLI tool.
@@ -74,6 +75,7 @@ func initFlags() {
 	flags.BoolVarP(&web, "web", "w", false, "Open GitHub profile (authenticated or specified user).")
 	flags.BoolVarP(&artOnly, "art-only", "a", false, "Generate only ASCII preview")
 	flags.StringVarP(&output, "output", "o", "", "Output file path (optional)")
+	flags.BoolVarP(&jsonExport, "json", "j", false, "Also write a JSON export of the contribution data (alongside the STL, or alone if --art-only is set)")
 }
 
 // executeRootCmd is the main execution function for the root command.
@@ -104,7 +106,7 @@ func handleSkylineCommand(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("invalid year range: %v", err)
 	}
 
-	return skyline.GenerateSkyline(startYear, endYear, user, full, output, artOnly)
+	return skyline.GenerateSkyline(startYear, endYear, user, full, output, artOnly, jsonExport)
 }
 
 // Browser interface matches browser.Browser functionality.

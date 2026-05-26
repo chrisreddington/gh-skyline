@@ -1,5 +1,6 @@
 // Package skyline provides the entry point for the GitHub Skyline Generator.
-// It generates a 3D model of GitHub contributions in STL format.
+// It generates a 3D model of GitHub contributions in STL format, with an
+// optional JSON export of the contribution data for downstream consumers.
 package skyline
 
 import (
@@ -9,6 +10,7 @@ import (
 	"github.com/github/gh-skyline/internal/ascii"
 	"github.com/github/gh-skyline/internal/errors"
 	"github.com/github/gh-skyline/internal/github"
+	"github.com/github/gh-skyline/internal/jsonexport"
 	"github.com/github/gh-skyline/internal/logger"
 	"github.com/github/gh-skyline/internal/stl"
 	"github.com/github/gh-skyline/internal/types"
@@ -22,8 +24,9 @@ type GitHubClientInterface interface {
 	FetchContributions(username string, year int) (*types.ContributionsResponse, error)
 }
 
-// GenerateSkyline creates a 3D model with ASCII art preview of GitHub contributions for the specified year range, or "full lifetime" of the user
-func GenerateSkyline(startYear, endYear int, targetUser string, full bool, output string, artOnly bool) error {
+// GenerateSkyline creates a 3D model with ASCII art preview of GitHub contributions for the specified year range, or "full lifetime" of the user.
+// When jsonExport is true, a JSON file containing the contribution data and derived stats is also written.
+func GenerateSkyline(startYear, endYear int, targetUser string, full bool, output string, artOnly, jsonExport bool) error {
 	log := logger.GetLogger()
 
 	client, err := github.InitializeGitHubClient()
@@ -52,12 +55,16 @@ func GenerateSkyline(startYear, endYear int, targetUser string, full bool, outpu
 	}
 
 	var allContributions [][][]types.ContributionDay
+	var allResponses []*types.ContributionsResponse
+	var years []int
 	for year := startYear; year <= endYear; year++ {
-		contributions, err := fetchContributionData(client, targetUser, year)
+		response, contributions, err := fetchContributionData(client, targetUser, year)
 		if err != nil {
 			return err
 		}
 		allContributions = append(allContributions, contributions)
+		allResponses = append(allResponses, response)
+		years = append(years, year)
 
 		// Generate ASCII art for each year
 		asciiArt, err := ascii.GenerateASCII(contributions, targetUser, year, (year == startYear) && !artOnly, !artOnly)
@@ -76,19 +83,41 @@ func GenerateSkyline(startYear, endYear int, targetUser string, full bool, outpu
 
 		// Generate the STL file
 		if len(allContributions) == 1 {
-			return stl.GenerateSTL(allContributions[0], outputPath, targetUser, startYear)
+			if err := stl.GenerateSTL(allContributions[0], outputPath, targetUser, startYear); err != nil {
+				return err
+			}
+		} else {
+			if err := stl.GenerateSTLRange(allContributions, outputPath, targetUser, startYear, endYear); err != nil {
+				return err
+			}
 		}
-		return stl.GenerateSTLRange(allContributions, outputPath, targetUser, startYear, endYear)
+	}
+
+	if jsonExport {
+		jsonPath := utils.GenerateJSONFilename(targetUser, startYear, endYear, output)
+		doc, err := jsonexport.Build(allResponses, years, targetUser, time.Now().UTC())
+		if err != nil {
+			return errors.New(errors.IOError, "failed to build JSON export", err)
+		}
+		if err := jsonexport.Write(doc, jsonPath); err != nil {
+			return errors.New(errors.IOError, "failed to write JSON export", err)
+		}
+		if err := log.Info("JSON export written to %s", jsonPath); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// fetchContributionData retrieves and formats the contribution data for the specified year.
-func fetchContributionData(client *github.Client, username string, year int) ([][]types.ContributionDay, error) {
+// fetchContributionData retrieves and formats the contribution data for the
+// specified year. It returns the raw *ContributionsResponse (used for the
+// JSON export and other metadata such as totalContributions) and a 2D grid
+// of ContributionDay values used by the STL generator.
+func fetchContributionData(client *github.Client, username string, year int) (*types.ContributionsResponse, [][]types.ContributionDay, error) {
 	response, err := client.FetchContributions(username, year)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch contributions: %w", err)
+		return nil, nil, fmt.Errorf("failed to fetch contributions: %w", err)
 	}
 
 	// Convert weeks data to 2D array for STL generation
@@ -98,5 +127,5 @@ func fetchContributionData(client *github.Client, username string, year int) ([]
 		contributionGrid[i] = week.ContributionDays
 	}
 
-	return contributionGrid, nil
+	return response, contributionGrid, nil
 }

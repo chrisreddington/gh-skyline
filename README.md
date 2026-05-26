@@ -46,6 +46,7 @@ You can run the `gh skyline` command with the following flags:
 - `-w`, `--web`: Open the GitHub profile for the authenticated or specified user.
   - Example: `gh skyline --web`, `gh skyline --user mona --web`
 - `-a`, `--art-only`: Show the ASCII art preview without generating an STL file.
+- `-j`, `--json`: Also write a JSON export of the contribution data (alongside the STL, or instead of it when combined with `--art-only`). See [JSON export](#json-export).
 
 ### Examples
 
@@ -96,6 +97,71 @@ By default, the CLI will create a `{username}-{year}-github-skyline.stl` file in
 ```bash
 gh skyline --output my-skyline.stl
 ```
+
+### JSON export
+
+Pass `--json` (or `-j`) to also write a structured JSON file describing
+the contribution data. This is useful for downstream tooling such as
+visualisations, fly-through videos, or analytics.
+
+```bash
+# STL + JSON
+gh skyline --year 2025 --json
+
+# JSON only (skip the STL)
+gh skyline --year 2025 --json --art-only
+
+# Full lifetime, one JSON file with all years from join year to now
+gh skyline --full --json
+```
+
+#### Filename
+
+- Default: `{username}-{yearRange}-github-skyline.json`, written next to the STL.
+- With `--output foo.stl`: JSON is written to `foo.json`.
+- With `--output foo.json`: JSON is written to `foo.json` (idempotent).
+- With `--output foo` (no extension): JSON is written to `foo.json`.
+
+#### Schema (v1)
+
+```json
+{
+  "schemaVersion": 1,
+  "username": "mona",
+  "generatedAt": "2025-05-26T12:30:00Z",
+  "years": [
+    {
+      "year": 2025,
+      "totalContributions": 1234,
+      "weeks": [
+        {
+          "weekIndex": 0,
+          "startDate": "2024-12-29",
+          "days": [
+            { "date": "2024-12-29", "count": 0, "weekday": 0 }
+          ]
+        }
+      ],
+      "stats": {
+        "peakDay":           { "date": "2025-03-14", "count": 42 },
+        "peakWeek":          { "startDate": "2025-03-09", "total": 173 },
+        "longestStreak":     { "start": "2025-04-01", "end": "2025-04-21", "length": 21 },
+        "firstContribution": { "date": "2025-01-03", "count": 2 },
+        "lastContribution":  { "date": "2025-12-22", "count": 5 }
+      }
+    }
+  ]
+}
+```
+
+Field notes:
+
+- `schemaVersion` — incremented on breaking changes.
+- `years` — one entry per requested year, ordered ascending. With `--full` or a year range, every year between the start and end (inclusive) is included.
+- `weeks` — the GitHub API's calendar weeks in order. The first and last weeks of a year may include padding days from the prior December or following January so each week is always 7 days long. These padding days are preserved verbatim in `weeks[].days` for grid fidelity.
+- `days[].weekday` — `0` = Sunday through `6` = Saturday, matching GitHub's convention.
+- `stats` — derived per-year metrics. Computed only over days whose date falls within the requested year, so adjacent-year padding days never influence `peakDay`, `peakWeek`, `firstContribution`, `lastContribution`, or `longestStreak`. If a year has no contributions, `stats` is `null`.
+- `longestStreak` — longest run of consecutive days with `count > 0`. For v1 a streak is confined to a single year (it does not span year boundaries, even within `--full` exports).
 
 Open the GitHub profile for the authenticated user:
 
