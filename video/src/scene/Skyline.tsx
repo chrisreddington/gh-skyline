@@ -67,6 +67,21 @@ interface SkylineProps {
    * self-contained.
    */
   showBaseplate?: boolean;
+  /**
+   * 0→1 collapse wave progress (frames 150→180 in SkylineYear).
+   * A right-to-left "retraction" wave that collapses bars before cruise begins.
+   * 0 = all bars at full height. 1 = all bars collapsed to zero.
+   */
+  collapseProgress?: number;
+  /**
+   * 0→1 peak-focus progress (ramps during approach 570→660, holds during canyon).
+   * Non-highlight bars shrink toward 20% of their height to spotlight the peak.
+   */
+  focusProgress?: number;
+  /**
+   * X positions of bars immune to the peak-focus shrink (the highlighted peak bars).
+   */
+  peakHighlightXs?: ReadonlyArray<number>;
 }
 
 const TEMP_OBJECT = new THREE.Object3D();
@@ -83,6 +98,50 @@ function springReveal(t: number): number {
   const c2 = c1 + 1;
   const x = t - 1;
   return 1 + c2 * x * x * x + c1 * x * x;
+}
+
+/** Monotonic ease-out cubic. t in [0,1] → [0,1]. No overshoot. */
+export function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3);
+}
+
+/** Monotonic ease-in-out cubic. t in [0,1] → [0,1]. No overshoot. */
+export function easeInOutCubic(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
+}
+
+/** Resolve the right-to-left collapse multiplier for a bar at the given x. */
+export function computeCollapseMultiplier(
+  barX: number,
+  minX: number,
+  maxX: number,
+  collapseProgress?: number,
+  bandwidth = 9,
+): number {
+  if ((collapseProgress ?? 0) <= 0) {
+    return 1;
+  }
+  const waveFront = maxX + bandwidth * 0.5 -
+    (maxX - minX + bandwidth) * easeInOutCubic(collapseProgress ?? 0);
+  const u = Math.max(0, Math.min(1, (barX - waveFront) / bandwidth));
+  return 1 - easeOutCubic(u);
+}
+
+/** Resolve the peak-focus multiplier for a bar at the given x. */
+export function computeFocusMultiplier(
+  barX: number,
+  focusProgress?: number,
+  peakHighlightXs?: ReadonlyArray<number>,
+): number {
+  if ((focusProgress ?? 0) <= 0 || !peakHighlightXs || peakHighlightXs.length === 0) {
+    return 1;
+  }
+  const isHighlight = peakHighlightXs.includes(barX);
+  if (isHighlight) {
+    return 1;
+  }
+  return 1 - easeInOutCubic(focusProgress ?? 0) * 0.8;
 }
 
 /**
@@ -120,7 +179,19 @@ const ActiveBars: React.FC<{
   theme: Theme;
   opacity: number;
   resolveReveal: (bar: BarPlacement) => number;
-}> = ({ bars, cellSize, theme, opacity, resolveReveal }) => {
+  collapseProgress?: number;
+  focusProgress?: number;
+  peakHighlightXs?: ReadonlyArray<number>;
+}> = ({
+  bars,
+  cellSize,
+  theme,
+  opacity,
+  resolveReveal,
+  collapseProgress,
+  focusProgress,
+  peakHighlightXs,
+}) => {
   const baseRef = useRef<THREE.InstancedMesh>(null);
   const l1Ref = useRef<THREE.InstancedMesh>(null);
   const l2Ref = useRef<THREE.InstancedMesh>(null);
@@ -132,6 +203,18 @@ const ActiveBars: React.FC<{
   const l2 = useMemo(() => bars.filter((b) => b.level === 2), [bars]);
   const l3 = useMemo(() => bars.filter((b) => b.level === 3), [bars]);
   const l4 = useMemo(() => bars.filter((b) => b.level === 4), [bars]);
+  const { minX, maxX } = useMemo(() => {
+    if (bars.length === 0) {
+      return { minX: 0, maxX: 0 };
+    }
+    return bars.reduce(
+      (acc, bar) => ({
+        minX: Math.min(acc.minX, bar.x),
+        maxX: Math.max(acc.maxX, bar.x),
+      }),
+      { minX: bars[0].x, maxX: bars[0].x },
+    );
+  }, [bars]);
 
   const baseMatSpec = useMemo(
     () => ({
@@ -159,10 +242,24 @@ const ActiveBars: React.FC<{
       layerBars.forEach((bar, i) => {
         const revealT = Math.min(1, Math.max(0, resolveReveal(bar)));
         const revealMul = springReveal(revealT);
-        const fullH = bar.height * revealMul;
+        const collapseMul = computeCollapseMultiplier(
+          bar.x,
+          minX,
+          maxX,
+          collapseProgress,
+        );
+        const focusMul = computeFocusMultiplier(
+          bar.x,
+          focusProgress,
+          peakHighlightXs,
+        );
+        const fullHEffective = Math.max(
+          1e-4,
+          bar.height * revealMul * collapseMul * focusMul,
+        );
         const ct = revealColourProgress(revealT, getColourLevel(bar));
-        const baseH = fullH * (1 - ct);
-        const layerH = getLayerHeight(fullH, ct);
+        const baseH = fullHEffective * (1 - ct);
+        const layerH = getLayerHeight(fullHEffective, ct);
         if (layerH < 1e-4) {
           TEMP_OBJECT.position.set(bar.x, -1000, bar.z);
           TEMP_OBJECT.scale.set(cellSize, 0.0001, cellSize);
@@ -213,7 +310,21 @@ const ActiveBars: React.FC<{
       (baseH, layerH) => baseH + layerH / 2,
       () => 4,
     );
-  }, [bars, cellSize, frame, l1, l2, l3, l4, resolveReveal]);
+  }, [
+    bars,
+    cellSize,
+    collapseProgress,
+    focusProgress,
+    frame,
+    l1,
+    l2,
+    l3,
+    l4,
+    maxX,
+    minX,
+    peakHighlightXs,
+    resolveReveal,
+  ]);
 
   if (bars.length === 0) return null;
 
@@ -388,6 +499,9 @@ export const Skyline: React.FC<SkylineProps> = ({
   buildLeadDistance = 8,
   showEmptyTiles = true,
   showBaseplate = false,
+  collapseProgress,
+  focusProgress,
+  peakHighlightXs,
 }) => {
   const placements = useMemo(() => layoutBars(year), [year]);
   const geom = useMemo(() => gridGeometry(year), [year]);
@@ -463,6 +577,9 @@ export const Skyline: React.FC<SkylineProps> = ({
         theme={theme}
         opacity={opacity}
         resolveReveal={resolveReveal}
+        collapseProgress={collapseProgress}
+        focusProgress={focusProgress}
+        peakHighlightXs={peakHighlightXs}
       />
     </group>
   );

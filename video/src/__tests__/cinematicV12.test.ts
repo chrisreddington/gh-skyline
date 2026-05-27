@@ -1,0 +1,92 @@
+import { describe, expect, it } from "vitest";
+import sampleYearDoc from "../../fixtures/sample-year.json";
+import type { YearData } from "../schema";
+import { buildRelativeDensityCurve } from "../scene/CameraRig";
+import {
+  buildKeyframes,
+  fmtWeekRange,
+  pickPeakTarget,
+} from "../compositions/SkylineYear";
+import {
+  computeCollapseMultiplier,
+  computeFocusMultiplier,
+} from "../scene/Skyline";
+import { layoutBars } from "../utils/grid";
+
+const year = sampleYearDoc.years[0] as YearData;
+
+describe("SkylineYear cinematic v12 choreography", () => {
+  it("builds structured peak-week captions with a formatted range", () => {
+    const placements = layoutBars(year);
+    const peak = pickPeakTarget(year, placements, 0);
+
+    expect(peak.caption).toEqual({
+      count: year.stats?.peakWeek?.total,
+      label: "PEAK WEEK",
+      dateRange: fmtWeekRange(year.stats!.peakWeek!.startDate),
+    });
+  });
+
+  it("returns to the hero-card angle at the loop point", () => {
+    const placements = layoutBars(year);
+    const densityCurve = buildRelativeDensityCurve(placements, 64, 2.5);
+    const peak = pickPeakTarget(year, placements, 0);
+    const keyframes = buildKeyframes(year, placements, peak, densityCurve, true);
+    const activeXs = placements.filter((p) => p.inYear && p.count > 0).map((p) => p.x);
+    const midActiveX = (Math.min(...activeXs) + Math.max(...activeXs)) / 2;
+
+    expect(keyframes[0]).toMatchObject({
+      frame: 0,
+      position: [midActiveX + 14, 10, 20],
+      lookAt: [midActiveX - 2, 1.8, 0],
+      fov: 38,
+      cut: true,
+    });
+    expect(keyframes.at(-1)).toMatchObject({
+      frame: 900,
+      position: [midActiveX + 14, 10, 20],
+      lookAt: [midActiveX - 2, 1.8, 0],
+      fov: 38,
+    });
+  });
+
+  it("starts the helicopter orbit after cruise without duplicating frame 480", () => {
+    const placements = layoutBars(year);
+    const densityCurve = buildRelativeDensityCurve(placements, 64, 2.5);
+    const peak = pickPeakTarget(year, placements, 0);
+    const keyframes = buildKeyframes(year, placements, peak, densityCurve, true);
+    const activeXs = placements.filter((p) => p.inYear && p.count > 0).map((p) => p.x);
+    const midActiveX = (Math.min(...activeXs) + Math.max(...activeXs)) / 2;
+
+    const orbitKeyframes = keyframes.filter(
+      (kf) =>
+        kf.frame > 480 &&
+        kf.frame <= 570 &&
+        kf.lookAt[0] === midActiveX &&
+        kf.lookAt[1] === 2 &&
+        kf.lookAt[2] === 0,
+    );
+
+    expect(orbitKeyframes).toHaveLength(8);
+    expect(orbitKeyframes[0]?.frame).toBe(491);
+    expect(orbitKeyframes.at(-1)?.frame).toBe(570);
+  });
+});
+
+describe("Skyline v12 bar multipliers", () => {
+  it("collapses bars from right to left during the wave-down", () => {
+    const leftStanding = computeCollapseMultiplier(0, 0, 30, 0.5, 9);
+    const midRetracting = computeCollapseMultiplier(20, 0, 30, 0.5, 9);
+    const rightCollapsed = computeCollapseMultiplier(30, 0, 30, 0.5, 9);
+
+    expect(leftStanding).toBeCloseTo(1, 5);
+    expect(midRetracting).toBeLessThan(leftStanding);
+    expect(midRetracting).toBeGreaterThan(rightCollapsed);
+    expect(rightCollapsed).toBe(0);
+  });
+
+  it("keeps highlighted peak bars full-height while shrinking other bars to 20%", () => {
+    expect(computeFocusMultiplier(12, 1, [12, 14])).toBe(1);
+    expect(computeFocusMultiplier(10, 1, [12, 14])).toBeCloseTo(0.2, 5);
+  });
+});
