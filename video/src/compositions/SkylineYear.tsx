@@ -77,7 +77,7 @@ export const skylineYearPropsSchema = z.object({
 export type SkylineYearProps = z.infer<typeof skylineYearPropsSchema>;
 
 export const SKYLINE_YEAR_FPS = 30;
-export const SKYLINE_YEAR_DURATION_FRAMES = 1056; // 35.2s @30fps (3s outro hold)
+export const SKYLINE_YEAR_DURATION_FRAMES = 1146; // 38.2s @30fps (6s outro hold)
 
 export const calculateSkylineYearMetadata: CalculateMetadataFunction<
   SkylineYearProps
@@ -111,7 +111,7 @@ const FLYBY_END = 690;        // 23s — full 360° helicopter orbit (8s, leisur
 const APPROACH_END = 750;     // 25s — approach to peak, focus effect
 const CANYON_END = 906;       // 30.2s — canyon hold, peak spotlight
 const EMERGE_END = 966;       // 32.2s — camera arrives at elevated outroPos; outro card fades in
-const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 1056 (35.2s) — 3s outro hold at hero-card angle
+const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 1146 (38.2s) — 6s outro hold at hero-card angle
 
 // Z floor — camera never goes closer than this in Z so it doesn't clip into
 // bars (bars span Z ±3.45 with originZ=-3 and cellSize=0.9 → far edge ≈ 3.5).
@@ -296,8 +296,8 @@ export function buildKeyframes(
   //
   // Bar peaks now sit at ~48% from top (was 41%), base ~76% (was 72%).
   // The hero moment regains its negative-space stage.
-  const outroPos: [number, number, number] = [midActiveX, 20, 57];
-  const outroLook: [number, number, number] = [midActiveX, 6, 0];
+  const outroPos: [number, number, number] = [midActiveX, 22, 50];
+  const outroLook: [number, number, number] = [midActiveX, 5, 0];
   const outroFov = 30;
 
   const k: CameraKeyframe[] = [];
@@ -433,12 +433,12 @@ export function buildKeyframes(
   }
 
   // ---- Emerge: single arc keyframe then outro hold -----
-  // Smooth midpoint between canyon exit and v22 outroPos [midX, 20, 57]/[6, 0].
+  // Smooth midpoint between canyon exit and v23 outroPos [midX, 22, 50]/[5, 0].
   k.push({
     frame: CANYON_END + 30,  // 936 — arc midpoint
-    position: [midActiveX - 1, 16, 48],
-    lookAt: [midActiveX, 4.5, -1],
-    fov: 34,
+    position: [midActiveX - 1, 16, 38],
+    lookAt: [midActiveX, 3.5, -1],
+    fov: 39,
   });
 
   // ---- EMERGE_END..TOTAL Outro holds at hero-card-style elevated position -----
@@ -852,23 +852,27 @@ const ChartOutro: React.FC<{
           fontSize: 32,
           fontWeight: 400,
           letterSpacing: "0.14em",
-          opacity: 0.42 * heroOpacity,
+          opacity: 0.38 * heroOpacity,
           textTransform: "lowercase",
         }}
       >
         @{username.replace(/^@/, "")} · {year}
       </div>
 
-      {/* Hero stat — big green contributions number sitting in the sky.
-          Heavy weight, tight tracking, no shadow chrome. */}
+      {/* Hero stat — green contributions number sized as a PEER to the
+          tagline (both 120-ish). Color carries the hierarchy, not size.
+          v23 graphic-designer note: at 168 the literal word "contributions."
+          was shouting louder than the number itself; dropping to 122 lets
+          the green carry the announce role while green-vs-white does the
+          hierarchy work (Bloomberg Businessweek editorial move). */}
       <div
         style={{
           position: "absolute",
-          top: "14%",
+          top: "16%",
           left: 0,
           right: 0,
           textAlign: "center",
-          fontSize: 168,
+          fontSize: 122,
           fontWeight: 800,
           lineHeight: 1,
           letterSpacing: "-0.01em",
@@ -892,7 +896,7 @@ const ChartOutro: React.FC<{
       <div
         style={{
           position: "absolute",
-          top: "38%",
+          top: "26%",
           left: 0,
           right: 0,
           textAlign: "center",
@@ -916,7 +920,7 @@ const ChartOutro: React.FC<{
       <div
         style={{
           position: "absolute",
-          bottom: 120,
+          bottom: 96,
           left: 0,
           right: 0,
           textAlign: "center",

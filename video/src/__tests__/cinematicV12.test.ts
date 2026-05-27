@@ -50,8 +50,8 @@ describe("SkylineYear cinematic v12 choreography", () => {
     // above and the CTA a horizon to sit under.
     expect(keyframes.at(-1)).toMatchObject({
       frame: 966,
-      position: [midActiveX, 20, 57],
-      lookAt: [midActiveX, 6, 0],
+      position: [midActiveX, 22, 50],
+      lookAt: [midActiveX, 5, 0],
       fov: 30,
     });
   });
