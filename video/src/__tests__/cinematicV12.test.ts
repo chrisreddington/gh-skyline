@@ -47,9 +47,9 @@ describe("SkylineYear cinematic v12 choreography", () => {
     // clamps to this position for all frames >= 966, giving a rock-solid hold).
     expect(keyframes.at(-1)).toMatchObject({
       frame: 966,
-      position: [midActiveX, 24, 50],
-      lookAt: [midActiveX, -10, -3],
-      fov: 38,
+      position: [midActiveX, 18, 57],
+      lookAt: [midActiveX, 7, 0],
+      fov: 30,
     });
   });
 

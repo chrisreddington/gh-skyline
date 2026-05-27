@@ -284,14 +284,21 @@ export function buildKeyframes(
   const homeLook: [number, number, number] = [midActiveX - 2, 1.8, 0];
   const homeFov = 38;
 
-  // Outro position: hero-card-style elevated downward angle. Camera at Z=50 /
-  // Y=24 gives ~82.7% horizontal fill of the 53-unit active skyline (8.6%
-  // margin per side). lookAt.y=-10 tilts the view ~33° down, lifting the
-  // skyline front-base into the upper-third of the frame so the centered
-  // text block below has ~290px of breathing room over the username caption.
-  const outroPos: [number, number, number] = [midActiveX, 24, 50];
-  const outroLook: [number, number, number] = [midActiveX, -10, -3];
-  const outroFov = 38;
+  // Outro position: "horizon" framing v18c — calibrated for the type-kiss.
+  // Camera at Y=18 / Z=57 with lookAt at Y=7 lifts the skyline silhouette so
+  // the tallest bar peaks sit at ~40% from the top of the frame. "Your skyline."
+  // at top 34% with a 120px font places its descenders ('y', '.') at ~40%,
+  // physically intersecting the peak bars (the figure/ground interlock that
+  // earlier iterations missed). ~96% horizontal fill (2% margin per side),
+  // FOV 30° for telephoto compression. Skyline occupies ~32% of vertical
+  // frame (40-72%), giving it real mass rather than reading as a footer.
+  // Lower 28% beneath the skyline base is clean dark floor for the CTA.
+  //
+  // Refs: Blade Runner 2049 poster, Spotify Wrapped end cards, GitHub Octoverse
+  // 2023 hero. Earned overlap via descender-kiss, not chyron-on-screenshot.
+  const outroPos: [number, number, number] = [midActiveX, 18, 57];
+  const outroLook: [number, number, number] = [midActiveX, 7, 0];
+  const outroFov = 30;
 
   const k: CameraKeyframe[] = [];
 
@@ -426,14 +433,15 @@ export function buildKeyframes(
   }
 
   // ---- Emerge: single arc keyframe then outro hold -----
-  // Smooth midpoint between canyon exit and the hero-card outroPos. Camera
-  // rises (Y 7 → 14 → 19) and pulls back (Z ~19 → 29 → 39) along a gentle arc,
-  // with lookAt sliding from peak focus down to outroLook so the skyline pulls
-  // into view from below.
+  // Smooth midpoint between canyon exit and the horizon outroPos. Camera rises
+  // (Y 10 → 14 → 18), pulls back (Z 26 → 42 → 57), and lookAt slides upward
+  // (1.5 → 4 → 7) so the skyline pulls down into the lower frame as the camera
+  // backs off into "horizon" altitude. FOV opens from 48° → 38° → 30° for a
+  // gentle telephoto compression at the final rest position.
   k.push({
     frame: CANYON_END + 30,  // 936 — arc midpoint
-    position: [midActiveX - 2, 14, 29],
-    lookAt: [midActiveX, 1, -2],
+    position: [midActiveX - 1, 14, 42],
+    lookAt: [midActiveX, 4, -1],
     fov: 38,
   });
 
@@ -755,47 +763,140 @@ const ChartOutro: React.FC<{
   return (
     <AbsoluteFill
       style={{
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-end",
-        alignItems: "center",
-        paddingBottom: 160,
-        paddingLeft: 80,
-        paddingRight: 80,
         pointerEvents: "none",
         opacity,
         fontFamily: `"${MONA_SANS_FONT_FAMILY}", ui-sans-serif, system-ui, sans-serif`,
         color: p.captionText,
-        textShadow: `0 2px 20px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7)`,
-        textAlign: "center",
+        textShadow: `0 2px 24px rgba(0,0,0,0.85), 0 0 14px rgba(0,0,0,0.55)`,
       }}
     >
-      {/* @username · year — subdued label above the hero line */}
-      <div style={{ fontSize: 36, fontWeight: 400, letterSpacing: "0.08em", opacity: 0.55, marginBottom: 14, textTransform: "lowercase" }}>
+      {/* Subtle bottom vignette — sinks the CTA into the skyline base so the
+          frame feels grounded rather than floating, without using a hard scrim
+          band. Per cinematographer note: "stops the bars from feeling like
+          cutouts on black". Pushed higher (50%) for stronger floor anchoring. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(to bottom, rgba(0,0,0,0) 50%, rgba(0,0,0,0.55) 100%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Username caption — small lowercase wordmark sitting IMMEDIATELY above
+          the hero stat as a tight attribution cluster ("who" → "what they did").
+          Sonnet 4.6 note: the username is the emotional hook ("this is mine!")
+          and should read alongside the stat, not be orphaned at the top. */}
+      <div
+        style={{
+          position: "absolute",
+          top: "14%",
+          left: 0,
+          right: 0,
+          textAlign: "center",
+          fontSize: 32,
+          fontWeight: 400,
+          letterSpacing: "0.10em",
+          opacity: 0.55,
+          textTransform: "lowercase",
+        }}
+      >
         @{username.replace(/^@/, "")} · {year}
       </div>
-      {/* Total contributions — hero element, large green */}
-      <div style={{ fontSize: 120, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: accentColor, marginBottom: 4 }}>
+
+      {/* Hero stat — big green contributions number sitting in the sky.
+          Heavy weight, tight tracking, no shadow chrome. */}
+      <div
+        style={{
+          position: "absolute",
+          top: "18%",
+          left: 0,
+          right: 0,
+          textAlign: "center",
+          fontSize: 168,
+          fontWeight: 800,
+          lineHeight: 1,
+          letterSpacing: "-0.01em",
+          color: accentColor,
+        }}
+      >
         {total.toLocaleString()} contributions.
       </div>
-      {/* Tagline */}
-      <div style={{ fontSize: 120, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: p.captionText, marginBottom: 48 }}>
+
+      {/* Emotional title — "Your skyline." positioned so its descenders ('y',
+          '.') physically intersect the tallest bar peaks. The figure/ground
+          interlock IS the money shot. Modular-scale ratio of ~1.4× from the
+          hero stat (168 → 120) creates proper hierarchy: stat announces,
+          title resolves. Weight 700 (vs stat's 800) reinforces hierarchy
+          without losing authority. */}
+      <div
+        style={{
+          position: "absolute",
+          top: "34%",
+          left: 0,
+          right: 0,
+          textAlign: "center",
+          fontSize: 120,
+          fontWeight: 700,
+          lineHeight: 1,
+          letterSpacing: "-0.015em",
+          color: p.captionText,
+        }}
+      >
         Your skyline.
       </div>
-      {/* CTA row: Invertocat + repo name */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
-        <div style={{ fontSize: 44, fontWeight: 600, color: p.captionText, opacity: 0.7 }}>
-          Let's build.
+
+      {/* CTA — tiny credit-line treatment sunk into the dark floor BELOW the
+          skyline base. Acts as a poster signature, not competing copy. */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 60,
+          left: 0,
+          right: 0,
+          textAlign: "center",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 32,
+            fontWeight: 600,
+            color: p.captionText,
+            opacity: 0.82,
+            letterSpacing: "0.02em",
+          }}
+        >
+          Let&apos;s build.
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            justifyContent: "center",
+          }}
+        >
           <img
             src={logoSrc}
-            width={36}
-            height={36}
+            width={24}
+            height={24}
             alt="GitHub"
-            style={{ opacity: 0.7, display: "block" }}
+            style={{ opacity: 0.62, display: "block" }}
           />
-          <div style={{ fontSize: 32, fontWeight: 400, color: dimColor, letterSpacing: "0.04em" }}>
+          <div
+            style={{
+              fontSize: 22,
+              fontWeight: 400,
+              color: dimColor,
+              opacity: 0.85,
+              letterSpacing: "0.05em",
+            }}
+          >
             github/gh-skyline
           </div>
         </div>
