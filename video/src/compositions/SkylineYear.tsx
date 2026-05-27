@@ -102,14 +102,13 @@ export const calculateSkylineYearMetadata: CalculateMetadataFunction<
 //  - CRUISE_END=450: 300-frame cruise (same as before, now starts at 150).
 //  - FLYBY_END=630: orbit extended to 180 frames (6s) — celebrates the year.
 //  - EMERGE_END=870: camera arrives at homePos here so outro shows hero angle.
-const COLLAPSE_START = 90;    // 3.0s — bars start collapsing R→L. Begins just AFTER
-                              // the camera commits to the descent at F75, so the
-                              // motion telegraphs naturally: camera leaves first,
-                              // bars follow.
-const COLLAPSE_END = 125;     // 4.17s — bars fully collapsed by F125 (user direction).
-                              // Wave bandwidth widened in computeCollapseMultiplier so
-                              // the leftmost bar actually reaches mult=0 here (was
-                              // leaving a ~12% remnant on the leftmost column).
+const COLLAPSE_START = 75;    // 2.5s — bars start collapsing the moment the camera
+                              // commits to the descent. Camera motion + bar motion
+                              // begin in lockstep so the collapse reads intentional,
+                              // not rushed.
+const COLLAPSE_END = 135;     // 4.5s — bars fully collapsed by F135 (60-frame window,
+                              // up from 35 in v25c — was too quick to feel deliberate).
+                              // Still finishes 15 frames before camera arrival at F150.
 const TITLE_END = 99;         // 3.3s — kept for LowerThirdWatermark fade-in timing
 const ENTRY_END = 150;        // 5s — dive complete; cruise begins
 const COLLAPSE_RELEASE = 190; // 6.33s — collapse fully released; bars now grow via cruise reveal
