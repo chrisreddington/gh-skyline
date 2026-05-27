@@ -829,11 +829,15 @@ const ChartOutro: React.FC<{
           interlock IS the money shot. Modular-scale ratio of ~1.4× from the
           hero stat (168 → 120) creates proper hierarchy: stat announces,
           title resolves. Weight 700 (vs stat's 800) reinforces hierarchy
-          without losing authority. */}
+          without losing authority.
+
+          Subtle white outer glow per cinematographer note — makes the type
+          feel lit by the city, not pasted onto it. Pairs with the existing
+          dark drop-shadow for legibility over bar overlap. */}
       <div
         style={{
           position: "absolute",
-          top: "34%",
+          top: "48%",
           left: 0,
           right: 0,
           textAlign: "center",
@@ -842,29 +846,33 @@ const ChartOutro: React.FC<{
           lineHeight: 1,
           letterSpacing: "-0.015em",
           color: p.captionText,
+          textShadow:
+            "0 0 18px rgba(255,255,255,0.16), 0 2px 28px rgba(0,0,0,0.92), 0 0 14px rgba(0,0,0,0.6)",
         }}
       >
         Your skyline.
       </div>
 
-      {/* CTA — tiny credit-line treatment sunk into the dark floor BELOW the
-          skyline base. Acts as a poster signature, not competing copy. */}
+      {/* CTA — credit-line treatment sunk into the dark floor BELOW the
+          skyline base. Acts as a poster signature. Per GPT-5.5 panel note:
+          scaled up slightly so it reads as a confident signature rather
+          than apologetic legal copy. */}
       <div
         style={{
           position: "absolute",
-          bottom: 60,
+          bottom: 70,
           left: 0,
           right: 0,
           textAlign: "center",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 12,
+          gap: 14,
         }}
       >
         <div
           style={{
-            fontSize: 32,
+            fontSize: 38,
             fontWeight: 600,
             color: p.captionText,
             opacity: 0.82,
@@ -877,23 +885,23 @@ const ChartOutro: React.FC<{
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 12,
+            gap: 14,
             justifyContent: "center",
           }}
         >
           <img
             src={logoSrc}
-            width={24}
-            height={24}
+            width={28}
+            height={28}
             alt="GitHub"
             style={{ opacity: 0.62, display: "block" }}
           />
           <div
             style={{
-              fontSize: 22,
+              fontSize: 26,
               fontWeight: 400,
               color: dimColor,
-              opacity: 0.85,
+              opacity: 0.88,
               letterSpacing: "0.05em",
             }}
           >
