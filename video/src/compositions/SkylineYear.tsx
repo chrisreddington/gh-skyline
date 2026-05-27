@@ -102,13 +102,19 @@ export const calculateSkylineYearMetadata: CalculateMetadataFunction<
 //  - CRUISE_END=450: 300-frame cruise (same as before, now starts at 150).
 //  - FLYBY_END=630: orbit extended to 180 frames (6s) — celebrates the year.
 //  - EMERGE_END=870: camera arrives at homePos here so outro shows hero angle.
-const COLLAPSE_START = 75;    // 2.5s — bars collapse R→L (v25: sync with text exit so
-                              // camera motion at F75 cloaks bar motion; was F45 which
-                              // fired into the middle of the type hold creating two
-                              // competing events).
-const TITLE_END = 99;         // 3.3s — last frame of intro type cluster fully visible
-                              // (tagline finishes fading at F99 per stagger schedule)
-const ENTRY_END = 150;        // 5s — dive + collapse complete; cruise begins
+const COLLAPSE_START = 90;    // 3.0s — bars start collapsing R→L. Begins just AFTER
+                              // the camera commits to the descent at F75, so the
+                              // motion telegraphs naturally: camera leaves first,
+                              // bars follow.
+const COLLAPSE_END = 135;     // 4.5s — bars fully collapsed BEFORE the camera arrives
+                              // at the skyline (F150). User feedback: previously the
+                              // collapse ran 75→150 and the camera "arrived to find
+                              // bars still finishing" which read as artificial wait.
+                              // Now the collapse is over 45 frames (was 75) — 40%
+                              // faster, and done with a 15-frame buffer before dive
+                              // arrival so the cruise reveal can begin cleanly.
+const TITLE_END = 99;         // 3.3s — kept for LowerThirdWatermark fade-in timing
+const ENTRY_END = 150;        // 5s — dive complete; cruise begins
 const COLLAPSE_RELEASE = 190; // 6.33s — collapse fully released; bars now grow via cruise reveal
 const CRUISE_END = 450;       // 15s — density-weighted cruise (bars build in)
 const FLYBY_END = 690;        // 23s — full 360° helicopter orbit (8s, leisurely)
@@ -501,20 +507,20 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
   );
   const p = palette(theme);
 
-  // Collapse wave progress: 0→1 over frames COLLAPSE_START→ENTRY_END (1.5s→5s)
-  // — bars retract R→L during the dive. Then RELEASES back 1→0 over
-  // ENTRY_END→COLLAPSE_RELEASE (5s→6.33s) so bars can grow back via the cruise
-  // camera's natural L→R reveal. No "revealBoost" is used; the cruise camera
-  // alone drives the per-bar growth, so bars grow with their proper colors
-  // from 0 height (no "grow in dark" phase, no full-height pop + snap-back).
+  // Collapse wave progress: 0→1 over frames COLLAPSE_START→COLLAPSE_END
+  // (3.0s→4.5s) — bars retract R→L during the dive, completing BEFORE the
+  // camera arrives at F150. Held at 1 from COLLAPSE_END→ENTRY_END, then
+  // RELEASES back 1→0 over ENTRY_END→COLLAPSE_RELEASE so the cruise camera's
+  // natural L→R reveal can grow them back.
   const collapseProgress = useMemo(() => {
     if (frame <= COLLAPSE_START) return 0;
-    if (frame < ENTRY_END) {
-      return interpolate(frame, [COLLAPSE_START, ENTRY_END], [0, 1], {
+    if (frame < COLLAPSE_END) {
+      return interpolate(frame, [COLLAPSE_START, COLLAPSE_END], [0, 1], {
         extrapolateLeft: "clamp",
         extrapolateRight: "clamp",
       });
     }
+    if (frame < ENTRY_END) return 1;
     if (frame < COLLAPSE_RELEASE) {
       return interpolate(frame, [ENTRY_END, COLLAPSE_RELEASE], [1, 0], {
         extrapolateLeft: "clamp",
@@ -633,18 +639,6 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
           with extra weight. */}
       <GlobalAtmosphere theme={theme} fadeOutFromFrame={EMERGE_END - 30} />
 
-      {/* Intro hero card (v25): mirrors ChartOutro layout for a seamless
-          loop seam — same caption position/opacity, same "Your skyline."
-          tagline at top 26%, same atmospheric stack. Crucially withholds
-          stat + CTA so F0 ≈ F1146 (where outro tail-fade has dropped stat
-          and CTA). Camera at F0..F75 holds at outroPos to complete the
-          visual rhyme.
-
-          NOTE: rendered LAST in the AbsoluteFill (after the WebGL warm-up
-          cover) so that on the first play the type is visible on top of
-          the cover, then on loop replay it sits on top of the skyline —
-          identical visible content either way. */}
-
       {/* Persistent lower-third watermark during cruise → emerge. */}
       <LowerThirdWatermark
         username={username}
@@ -687,33 +681,8 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
         theme={theme}
       />
 
-      {/* WebGL warm-up cover (v25 — shortened from 8f to 2f to minimise the
-          loop seam). The Remotion canvas may not be ready on the very first
-          rendered frame, producing a black flash. We cover F0 fully and
-          fade out by F2 so the loop cut from end → start shows skyline
-          re-appearing within 2 frames. The intro type sits on top of this
-          cover so caption + tagline remain continuous across the seam. */}
-      {frame <= 2 && (
-        <AbsoluteFill
-          style={{
-            backgroundColor: p.background,
-            opacity: interpolate(frame, [0, 1, 2], [1, 1, 0], {
-              extrapolateLeft: "clamp",
-              extrapolateRight: "clamp",
-            }),
-            pointerEvents: "none",
-          }}
-        />
-      )}
-
-      {/* ChartIntro rendered AFTER warm-up cover so type sits on top of the
-          cover on first play and on top of the skyline on loop replay. */}
-      <ChartIntro
-        year={data.year}
-        username={username}
-        theme={theme}
-        toFrame={TITLE_END}
-      />
+      {/* ChartIntro: atmospheric stack only (no text — user direction). */}
+      <ChartIntro theme={theme} />
     </AbsoluteFill>
   );
 };
@@ -836,70 +805,41 @@ const GlobalAtmosphere: React.FC<{
 };
 
 /**
- * Intro hero card (v25 loop-seam composition).
+ * Intro hero card (v25 loop-seam composition — text-free variant).
  *
- * Mirrors ChartOutro at F1146 so the loop cut from end → start is invisible:
- * - Same caption "@user · year" at top 10%, opacity 0.38, fontSize 32.
- * - Same "Your skyline." tagline at top 26%, fontSize 120, weight 700.
- * - Same atmospheric stack (sky recession, warm low rim, bottom vignette,
- *   ground lift) — these brackets are intentionally outro/intro only;
- *   GlobalAtmosphere stays cool through the body.
- * - NO hero stat. NO CTA. Those elements arrive at the outro as celebratory
- *   chrome and have faded out by F1146 via the tail-fade.
+ * Renders ONLY the atmospheric stack that mirrors ChartOutro:
+ * sky recession + warm low rim + bottom vignette + ground lift. The heavy
+ * layers fade out F75→F150 to match the descent so the cruise body returns
+ * to a cool, focused palette.
  *
- * Camera is parked at outroPos for F0..F75 (in CameraRig), so the visual
- * is identical to the outro's final pose. The intro then "departs" by
- * fading caption + tagline F75→F99 (staggered) while the camera commits
- * to the dive — one synchronized cue.
+ * User direction: the intro carries NO text. The skyline alone (held at
+ * outroPos for F0..F75) is the opening shot. The "Your skyline." +
+ * attribution moment is reserved for the outro celebration.
+ *
+ * Camera is parked at outroPos for F0..F75 (in CameraRig), so the geometry
+ * is identical to the outro's final pose minus the chrome — a clean
+ * cinematic establishing shot of the city.
  */
 const ChartIntro: React.FC<{
-  year: number;
-  username: string;
   theme: SkylineYearProps["theme"];
-  toFrame: number; // last frame the type cluster is fully visible (TITLE_END)
-}> = ({ year, username, theme, toFrame }) => {
+}> = ({ theme }) => {
   const frame = useCurrentFrame();
-  const p = palette(theme);
 
-  // v25 loop-seam choreography: type is at FULL opacity at F0 to match the
-  // outro's final state (where caption+tagline persist through F1146 while
-  // the stat+CTA tail-fade out). NO fade-in — that would create a visible
-  // pop on the loop cut. Type then fades out F75→F99 (staggered) as the
-  // camera commits to the descent.
-  const easeInCubic = (t: number) => t * t * t;
-  // Fade-out: caption leaves first (F75→F90, 15f), tagline follows with a
-  // 9-frame stagger (F84→F99). Read order in reverse: the eye lets go of
-  // attribution before the emotional line.
-  const fadeOut = (start: number, duration: number) => {
-    const t = Math.max(0, Math.min(1, (frame - start) / duration));
-    return 1 - easeInCubic(t);
-  };
-  const captionOpacity = 0.38 * fadeOut(toFrame - 24, 15);
-  const titleOpacity = fadeOut(toFrame - 15, 15);
-
-  // Heavy atmospheric layers (warm low rim, bottom vignette, ground lift)
-  // fade out over the descent F75→F150 so they don't fight the cruise mood.
-  // The sky-recession layer persists longer — GlobalAtmosphere carries a
-  // softer version through the body.
+  // Heavy atmospheric layers (sky recession, warm low rim, bottom vignette,
+  // ground lift) fade out over the descent F75→F150 so they don't fight the
+  // cruise mood. After F150 the component is a no-op.
   const heavyAtmosphere = interpolate(
     frame,
     [75, 150],
     [1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
-  if (frame > 150 && titleOpacity <= 0 && captionOpacity <= 0 && heavyAtmosphere <= 0) {
-    return null;
-  }
+  if (heavyAtmosphere <= 0) return null;
+  // theme reserved for future palette-aware atmosphere; intentionally unused.
+  void theme;
 
   return (
-    <AbsoluteFill
-      style={{
-        pointerEvents: "none",
-        fontFamily: `"${MONA_SANS_FONT_FAMILY}", ui-sans-serif, system-ui, sans-serif`,
-        color: p.captionText,
-        textShadow: `0 2px 24px rgba(0,0,0,0.85), 0 0 14px rgba(0,0,0,0.55)`,
-      }}
-    >
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
       {/* Atmospheric layers — mirror ChartOutro exactly, fade out during the
           descent so the cruise body returns to the cool/focused palette. */}
       <div
@@ -946,47 +886,6 @@ const ChartIntro: React.FC<{
           opacity: heavyAtmosphere,
         }}
       />
-
-      {/* Username caption — matches outro: top 10%, lowercase, 0.38 opacity. */}
-      <div
-        style={{
-          position: "absolute",
-          top: "10%",
-          left: 0,
-          right: 0,
-          textAlign: "center",
-          fontSize: 32,
-          fontWeight: 400,
-          letterSpacing: "0.14em",
-          opacity: captionOpacity,
-          textTransform: "lowercase",
-        }}
-      >
-        @{username.replace(/^@/, "")} · {year}
-      </div>
-
-      {/* "Your skyline." tagline — top 26%, fontSize 120, weight 700.
-          Identical to ChartOutro. The figure/ground interlock with the
-          skyline below is the visual rhyme that closes the loop. */}
-      <div
-        style={{
-          position: "absolute",
-          top: "26%",
-          left: 0,
-          right: 0,
-          textAlign: "center",
-          fontSize: 120,
-          fontWeight: 700,
-          lineHeight: 1,
-          letterSpacing: "-0.015em",
-          color: p.captionText,
-          textShadow:
-            "0 0 18px rgba(255,255,255,0.16), 0 2px 28px rgba(0,0,0,0.92), 0 0 14px rgba(0,0,0,0.6)",
-          opacity: titleOpacity,
-        }}
-      >
-        Your skyline.
-      </div>
     </AbsoluteFill>
   );
 };
