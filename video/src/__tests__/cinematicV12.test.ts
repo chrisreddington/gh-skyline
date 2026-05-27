@@ -43,15 +43,15 @@ describe("SkylineYear cinematic v12 choreography", () => {
       fov: 38,
       cut: true,
     });
-    // Frame 966: v21 horizon outro — camera raised + look-down per partnership
-    // iteration with cinematographer. pos Y 20, lookAt Y 3 gives a 16.6°
-    // depression (vs v18d's 10.9°) — skyline silhouette lifts into the
-    // lower-middle band of the frame, filling the gap between "Your skyline."
-    // and "Let's build.". FOV 30° (~45mm) preserved for telephoto compression.
+    // Frame 966: v22 outro — bars lowered in frame per trajectory panel
+    // consensus. Same camera pos as v21 (depth gain preserved) but lookAt
+    // raised Y 3 → 6, dropping depression from 16.6° → 13.8°. Bar peaks
+    // now sit at ~48% (was 41%), giving the type cluster breathing room
+    // above and the CTA a horizon to sit under.
     expect(keyframes.at(-1)).toMatchObject({
       frame: 966,
       position: [midActiveX, 20, 57],
-      lookAt: [midActiveX, 3, 0],
+      lookAt: [midActiveX, 6, 0],
       fov: 30,
     });
   });

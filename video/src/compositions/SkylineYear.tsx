@@ -284,22 +284,20 @@ export function buildKeyframes(
   const homeLook: [number, number, number] = [midActiveX - 2, 1.8, 0];
   const homeFov = 38;
 
-  // Outro position: v21 — partnership iteration after v20.
-  // Camera raised (Y 18→20) and looking further down (Y 7→3) to raise the
-  // skyline silhouette in the frame, filling the gap between "Your skyline."
-  // and the CTA. Depression angle goes 10.9° → 16.6° — still in the
-  // "city/architecture" zone (15-17° is a mid-rise window looking across
-  // the district), far from v19's flat-sticks failure.
+  // Outro position: v22 — trajectory panel iteration (CD + DP + Type
+  // consensus). Lower the bars in frame so the skyline sits BETWEEN the
+  // type cluster and the CTA with breathing room, rather than crowding
+  // the tagline.
   //
-  // Bar peaks now sit at ~41% from top (was 52%), bar base ~72% (was 78%).
-  // Net effect: the skyline fills the lower-middle band of the frame,
-  // descender-kiss with "Your skyline." preserved (text moved up to ~31% so
-  // its descenders land at ~41% = peak height).
+  // pos Y=20 unchanged (depth gain from v21 is real — keep it).
+  // lookAt Y 3 → 6: raises the camera's aim point, dropping the bars in
+  // frame. Depression 16.6° → 13.8°. Still firmly in the "city, not chart"
+  // zone (DP's 10-22° guideline; v18d was 10.9° and read cinematic).
   //
-  // FOV 30° (~45mm full-frame equivalent) unchanged — telephoto compression
-  // preserved. Z=57 unchanged — horizontal coverage maintained.
+  // Bar peaks now sit at ~48% from top (was 41%), base ~76% (was 72%).
+  // The hero moment regains its negative-space stage.
   const outroPos: [number, number, number] = [midActiveX, 20, 57];
-  const outroLook: [number, number, number] = [midActiveX, 3, 0];
+  const outroLook: [number, number, number] = [midActiveX, 6, 0];
   const outroFov = 30;
 
   const k: CameraKeyframe[] = [];
@@ -435,14 +433,11 @@ export function buildKeyframes(
   }
 
   // ---- Emerge: single arc keyframe then outro hold -----
-  // Smooth midpoint between canyon exit and v21 outroPos [midX, 20, 57]/[3, 0].
-  // Camera rises (Y 10 → 16 → 20), pulls back (Z 26 → 48 → 57), and lookAt
-  // slides DOWN (1.5 → 3.5 → 3) so the skyline lifts into the lower-middle
-  // band of the frame as the camera backs off into outro altitude.
+  // Smooth midpoint between canyon exit and v22 outroPos [midX, 20, 57]/[6, 0].
   k.push({
     frame: CANYON_END + 30,  // 936 — arc midpoint
     position: [midActiveX - 1, 16, 48],
-    lookAt: [midActiveX, 3.5, -1],
+    lookAt: [midActiveX, 4.5, -1],
     fov: 34,
   });
 
@@ -827,6 +822,21 @@ const ChartOutro: React.FC<{
           pointerEvents: "none",
         }}
       />
+      {/* Ground-plane lift (v22, per Creative Director trajectory note) —
+          subtle green-tinted brightening at the horizon line (~75% from top)
+          fading to true #000 at the bottom edge. Gives the CTA a stage to
+          sit under rather than floating in flat black. ≤8% luminance lift,
+          biased slightly leftward to match the dense-bar mass — reads as
+          ambient ground bounce, not a vignette. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse 80% 28% at 42% 78%, rgba(20,30,22,0.55) 0%, rgba(8,12,10,0.30) 45%, rgba(0,0,0,0) 75%)",
+          pointerEvents: "none",
+        }}
+      />
 
       {/* Username caption — small lowercase wordmark sitting IMMEDIATELY above
           the hero stat as a tight attribution cluster ("who" → "what they did").
@@ -841,8 +851,8 @@ const ChartOutro: React.FC<{
           textAlign: "center",
           fontSize: 32,
           fontWeight: 400,
-          letterSpacing: "0.10em",
-          opacity: 0.55 * heroOpacity,
+          letterSpacing: "0.14em",
+          opacity: 0.42 * heroOpacity,
           textTransform: "lowercase",
         }}
       >
@@ -882,7 +892,7 @@ const ChartOutro: React.FC<{
       <div
         style={{
           position: "absolute",
-          top: "31%",
+          top: "38%",
           left: 0,
           right: 0,
           textAlign: "center",
