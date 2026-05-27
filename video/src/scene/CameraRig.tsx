@@ -5,6 +5,14 @@
  * Frame convention: ALL frames in keyframes are absolute within the
  * composition. The component reads `useCurrentFrame()` at composition root
  * (i.e. NOT inside a <Sequence>) so timing stays predictable.
+ *
+ * Interpolation model: time-normalised Catmull-Rom spline with no per-segment
+ * easing. Applying easeInOutCubic per segment forces the camera to decelerate
+ * to zero then re-accelerate at every keyframe — the "next movement" stop-start
+ * pattern. Instead, tangents are derived from neighbour positions normalised by
+ * their frame-time intervals, guaranteeing C¹ velocity continuity across all
+ * keyframe boundaries. The camera follows one long flowing curve, not a chain
+ * of micro-movements.
  */
 import React, { useMemo } from "react";
 import * as THREE from "three";
@@ -30,9 +38,51 @@ export interface RigSample {
 
 const DEFAULT_FOV = 35;
 
-function easeInOutCubic(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+/**
+ * Time-normalised tangent velocity at the midpoint p1 of a three-point chain
+ * p0 → p1 → p2 with frame-durations dt01 and dt12.
+ *
+ * Returns the weighted-average velocity (units/frame) at p1, scaled by
+ * `tension`. Multiply by (segment_frames / 3) to obtain the Bezier control
+ * point offset. This is the non-uniform Catmull-Rom formulation — it correctly
+ * handles keyframes with unequal time spacing, unlike the naive spatial-delta
+ * approach that ignores frame intervals.
+ */
+function timeNorm3(
+  p0: [number, number, number],
+  p1: [number, number, number],
+  p2: [number, number, number],
+  dt01: number,
+  dt12: number,
+  tension: number,
+): [number, number, number] {
+  const total = dt01 + dt12;
+  // Incoming velocity (p0→p1) and outgoing velocity (p1→p2), both in units/frame.
+  // Time-weighted average = velocity at p1 that achieves C¹ continuity.
+  return [
+    ((p1[0] - p0[0]) / dt01 * dt12 + (p2[0] - p1[0]) / dt12 * dt01) / total * tension,
+    ((p1[1] - p0[1]) / dt01 * dt12 + (p2[1] - p1[1]) / dt12 * dt01) / total * tension,
+    ((p1[2] - p0[2]) / dt01 * dt12 + (p2[2] - p1[2]) / dt12 * dt01) / total * tension,
+  ];
 }
+
+/** Scalar version of timeNorm3 for FOV interpolation. */
+function timeNorm1(
+  f0: number,
+  f1: number,
+  f2: number,
+  dt01: number,
+  dt12: number,
+  tension: number,
+): number {
+  const total = dt01 + dt12;
+  return ((f1 - f0) / dt01 * dt12 + (f2 - f1) / dt12 * dt01) / total * tension;
+}
+
+/** Tension for position tangents — 0.85 gives natural momentum without overshoot. */
+const POS_TENSION = 0.85;
+/** Tension for lookAt tangents — slightly looser so gaze pivots feel intentional. */
+const LOOK_TENSION = 0.60;
 
 function add3(
   a: [number, number, number],
@@ -88,9 +138,15 @@ function catmullRom1D(
 
 /**
  * Sample camera state at `frame` given a sorted keyframe list. Behaviour:
- *  - frame ≤ first.frame → first keyframe
- *  - frame ≥ last.frame → last keyframe
- *  - otherwise: cubic ease between bracketing keyframes
+ *  - frame ≤ first.frame → first keyframe (clamped)
+ *  - frame ≥ last.frame → last keyframe (clamped)
+ *  - `cut: true` on keyframe B → hold A's values until B, then snap
+ *  - otherwise: time-normalised cubic Bezier with C¹-continuous tangents
+ *
+ * No per-segment easing is applied. Easing would force the camera to
+ * decelerate to zero then re-accelerate at every keyframe, producing the
+ * "next movement" stop-start pattern. Time-normalised Catmull-Rom tangents
+ * guarantee smooth velocity through every internal keyframe instead.
  */
 export function sampleRig(frame: number, keyframes: CameraKeyframe[]): RigSample {
   if (keyframes.length === 0) {
@@ -116,29 +172,69 @@ export function sampleRig(frame: number, keyframes: CameraKeyframe[]): RigSample
     };
   }
   const t = (frame - a.frame) / Math.max(1, b.frame - a.frame);
-  const eased = easeInOutCubic(t);
-  const prev = i > 0 && !a.cut ? keyframes[i - 1] : a;
-  const next = i + 2 < keyframes.length && !keyframes[i + 2].cut
-    ? keyframes[i + 2]
-    : b;
-  const posTangentIn = scale3(sub3(b.position, prev.position), 0.12);
-  const posTangentOut = scale3(sub3(next.position, a.position), 0.12);
-  const posC1 = add3(a.position, posTangentIn);
-  const posC2 = sub3(b.position, posTangentOut);
+  const dt = Math.max(1, b.frame - a.frame);
 
-  const lookTangentIn = scale3(sub3(b.lookAt, prev.lookAt), 0.08);
-  const lookTangentOut = scale3(sub3(next.lookAt, a.lookAt), 0.08);
-  const lookC1 = add3(a.lookAt, lookTangentIn);
-  const lookC2 = sub3(b.lookAt, lookTangentOut);
+  // Neighbour keyframes for tangent computation. Null when at sequence
+  // boundaries or blocked by a cut (which resets velocity to zero).
+  const prevKf = i > 0 && !a.cut ? keyframes[i - 1] : null;
+  const nextKf = i + 2 < keyframes.length && !keyframes[i + 2].cut
+    ? keyframes[i + 2]
+    : null;
+
+  // Tangent at 'a': zero at the sequence start (or after a cut) so the camera
+  // begins at rest and eases in naturally from the Bezier shape.
+  let posC1: [number, number, number];
+  let lookC1: [number, number, number];
+  if (prevKf === null) {
+    posC1 = a.position;
+    lookC1 = a.lookAt;
+  } else {
+    const dtIn = Math.max(1, a.frame - prevKf.frame);
+    const posVelA = timeNorm3(prevKf.position, a.position, b.position, dtIn, dt, POS_TENSION);
+    const lookVelA = timeNorm3(prevKf.lookAt, a.lookAt, b.lookAt, dtIn, dt, LOOK_TENSION);
+    posC1 = add3(a.position, scale3(posVelA, dt / 3));
+    lookC1 = add3(a.lookAt, scale3(lookVelA, dt / 3));
+  }
+
+  // Tangent at 'b': zero at the sequence end so the camera arrives at rest.
+  let posC2: [number, number, number];
+  let lookC2: [number, number, number];
+  if (nextKf === null) {
+    posC2 = b.position;
+    lookC2 = b.lookAt;
+  } else {
+    const dtOut = Math.max(1, nextKf.frame - b.frame);
+    const posVelB = timeNorm3(a.position, b.position, nextKf.position, dt, dtOut, POS_TENSION);
+    const lookVelB = timeNorm3(a.lookAt, b.lookAt, nextKf.lookAt, dt, dtOut, LOOK_TENSION);
+    posC2 = sub3(b.position, scale3(posVelB, dt / 3));
+    lookC2 = sub3(b.lookAt, scale3(lookVelB, dt / 3));
+  }
 
   const fovA = a.fov ?? DEFAULT_FOV;
   const fovB = b.fov ?? DEFAULT_FOV;
-  const fovPrev = prev.fov ?? fovA;
-  const fovNext = next.fov ?? fovB;
+  // FOV cubic Bezier — same C¹ tangent logic as position so FOV transitions
+  // flow without kinks at keyframe boundaries.
+  let fovC1: number, fovC2: number;
+  if (prevKf === null) {
+    fovC1 = fovA;
+  } else {
+    const dtIn = Math.max(1, a.frame - prevKf.frame);
+    const fovVelA = timeNorm1(prevKf.fov ?? DEFAULT_FOV, fovA, fovB, dtIn, dt, POS_TENSION);
+    fovC1 = fovA + fovVelA * dt / 3;
+  }
+  if (nextKf === null) {
+    fovC2 = fovB;
+  } else {
+    const dtOut = Math.max(1, nextKf.frame - b.frame);
+    const fovVelB = timeNorm1(fovA, fovB, nextKf.fov ?? DEFAULT_FOV, dt, dtOut, POS_TENSION);
+    fovC2 = fovB - fovVelB * dt / 3;
+  }
+  const u = 1 - t;
+  const fov = u * u * u * fovA + 3 * u * u * t * fovC1 + 3 * u * t * t * fovC2 + t * t * t * fovB;
   return {
-    position: bezier3(a.position, posC1, posC2, b.position, eased),
-    lookAt: bezier3(a.lookAt, lookC1, lookC2, b.lookAt, eased),
-    fov: catmullRom1D(fovPrev, fovA, fovB, fovNext, eased),
+    position: bezier3(a.position, posC1, posC2, b.position, t),
+    lookAt: bezier3(a.lookAt, lookC1, lookC2, b.lookAt, t),
+    fov,
   };
 }
 

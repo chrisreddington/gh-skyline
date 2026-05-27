@@ -94,20 +94,22 @@ export const calculateSkylineYearMetadata: CalculateMetadataFunction<
 
 // Phase boundaries (absolute frames @ 30fps = 30s total).
 //
-// v12 changes:
-//  - COLLAPSE_END = 180: new "wave-down" phase 150→180 collapses bars R→L
-//    before the cruise begins. Cruise shifts to 180 (same budget, different start).
-//  - homePos changed to hero-card angle: three-quarter view at r≈17, h=10.
-//  - Full 360° helicopter orbit in flyby phase.
-const TITLE_END = 90;         // 3s — hero-card angle overview + title card
-const ENTRY_END = 150;        // 5s — street-level entry
-const COLLAPSE_END = 180;     // 6s — R→L wave collapses bars before cruise
-const CRUISE_END = 480;       // 16s — density-weighted cruise (bars build in again)
-const FLYBY_END = 570;        // 19s — full 360° helicopter orbit
-const APPROACH_END = 660;     // 22s — approach to peak + focus effect begins
-const CANYON_END = 780;       // 26s — canyon hold, peak spotlight
-const EMERGE_END = 840;       // 28s — emerge, outro card
-const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 900 — home arc back to hero pose
+// v13 phase changes:
+//  - COLLAPSE_START=45: collapse wave starts at 1.5s, overlapping the dive,
+//    so bars are fully retracted by the time the camera hits street level (5s).
+//  - ENTRY_END=150: dive complete + collapse complete; cruise begins immediately.
+//  - CRUISE_END=450: 300-frame cruise (same as before, now starts at 150).
+//  - FLYBY_END=630: orbit extended to 180 frames (6s) — celebrates the year.
+//  - EMERGE_END=870: camera arrives at homePos here so outro shows hero angle.
+const COLLAPSE_START = 45;    // 1.5s — R→L collapse wave begins during overview
+const TITLE_END = 90;         // 3s — hero-card overview + title card
+const ENTRY_END = 150;        // 5s — dive + collapse complete; cruise begins
+const CRUISE_END = 450;       // 15s — density-weighted cruise (bars build in)
+const FLYBY_END = 630;        // 21s — full 360° helicopter orbit (6s)
+const APPROACH_END = 690;     // 23s — approach to peak, focus effect
+const CANYON_END = 810;       // 27s — canyon hold, peak spotlight
+const EMERGE_END = 870;       // 29s — camera back at homePos; outro card starts
+const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 900 — outro holds at homePos (seamless loop)
 
 // Z floor — camera never goes closer than this in Z so it doesn't clip into
 // bars (bars span Z ±3.45 with originZ=-3 and cellSize=0.9 → far edge ≈ 3.5).
@@ -271,15 +273,23 @@ export function buildKeyframes(
   const lastActiveX = hasActive ? Math.max(...activeXs) : geom.originX + span;
   const midActiveX = (firstActiveX + lastActiveX) / 2;
   const cruiseEndX = hasActive
-    ? Math.min(geom.originX + span, lastActiveX + 2)
+    ? Math.min(geom.originX + span, lastActiveX)
     : geom.originX + span;
   const cruiseSpan = cruiseEndX - geom.originX;
 
-  // Hero-card "home" position: three-quarter isometric view matching the
-  // GitHub Skyline hero card aesthetic. Same for frame 0 and frame 900 → loop.
+  // Hero-card "home" position: three-quarter isometric view for title card.
   const homePos: [number, number, number] = [midActiveX + 14, 10, 20];
   const homeLook: [number, number, number] = [midActiveX - 2, 1.8, 0];
   const homeFov = 38;
+
+  // Outro elevated overhead position: camera high + forward so you see top
+  // faces of bars — matches the gh-skyline hero card reference (Image 3).
+  // Camera at ~50° downward from horizontal; full grid visible in upper 60% frame.
+  // Note: frame 900 ≠ frame 0 intentionally — intro angle will be aligned
+  // to this in a follow-up pass once the outro is confirmed looking right.
+  const outroPos: [number, number, number] = [midActiveX, 34, 26];
+  const outroLook: [number, number, number] = [midActiveX, 2.5, 0];
+  const outroFov = 35;
 
   const k: CameraKeyframe[] = [];
 
@@ -294,18 +304,17 @@ export function buildKeyframes(
   });
 
   // ---- 90..150 Dive to street level -----
+  // Camera starts far enough left (originX - BUILD_LEAD - 2) so that at
+  // ENTRY_END all bars are still AHEAD of the camera (revealMul=0 for all),
+  // preventing a jarring "pre-revealed" pop when cruise begins.
   k.push({
     frame: ENTRY_END,
-    position: [geom.originX - 1.5, 4.5, Z_FLOOR + 2.5],
-    lookAt: [geom.originX + 4, 1.8, 0],
+    position: [geom.originX - BUILD_LEAD - 2, 4.5, Z_FLOOR + 2.5],
+    lookAt: [geom.originX + 2, 1.8, 0],
     fov: 42,
   });
 
-  // ---- 150..180 Collapse-wave camera hold -----
-  // The camera stays at street level while bars retract R→L.
-  // No camera keyframe needed here; the spline glides through naturally.
-
-  // ---- 180..480 Cruise (bars rebuild L→R) -----
+  // ---- 150..450 Cruise (bars rebuild L→R) -----
   const cruiseSamples = 5;
   let smoothedDensity = densityAt(densityCurve, geom.originX);
   for (let i = 1; i <= cruiseSamples; i++) {
@@ -319,27 +328,38 @@ export function buildKeyframes(
     const y = Math.max(5.0, 5.4 + (lift - 2.4) * 0.45);
     const fov = 42 - smoothedDensity * 4;
     const lookY = smoothedDensity > 0.4 ? 1.2 + smoothedDensity * 1.0 : 0.8;
-    const frame = COLLAPSE_END + Math.round(u * (CRUISE_END - COLLAPSE_END));
-    k.push({ frame, position: [x, y, z], lookAt: [x + 4, lookY, 0], fov });
+    // Ramp look-ahead from 4 → 0 in the final 20% of cruise so the camera
+    // doesn't look beyond the last bar (fixes the December-overshoot feel).
+    const endRamp = Math.max(0, (u - 0.8) / 0.2);
+    const lookAhead = 4 * (1 - endRamp);
+    const frame = ENTRY_END + Math.round(u * (CRUISE_END - ENTRY_END));
+    k.push({ frame, position: [x, y, z], lookAt: [x + lookAhead, lookY, 0], fov });
   }
 
-  // ---- 480..570 Full 360° helicopter orbit -----
-  // 8 evenly-spaced keyframes around a circle, r=32, h=11.
+  // ---- 450..630 Full 360° helicopter orbit (6s, leisurely) -----
+  // 8 evenly-spaced keyframes. lookAt uses the tangent-based banking formula:
+  //   tangent = [cos(θ), 0, -sin(θ)] (direction of motion as θ increases)
+  //   lookAt  = center + tangent * 6 + [0, -1.5, 0]
+  // This tilts the camera toward the terrain below as if banking in a helicopter.
   const orbitR = 32;
   const orbitH = 11;
-  const orbitCenter: [number, number, number] = [midActiveX, 0, 0];
-  const orbitFrames = FLYBY_END - CRUISE_END;
+  const orbitFrames = FLYBY_END - CRUISE_END; // 180 frames = 6s
   for (let seg = 1; seg <= 8; seg++) {
     const theta = (seg / 8) * Math.PI * 2;
     const orbitFrame = CRUISE_END + Math.round((seg / 8) * orbitFrames);
+    const camX = midActiveX + orbitR * Math.sin(theta);
+    const camZ = orbitR * Math.cos(theta);
+    // Tangent direction (derivative of position w.r.t. theta, normalised).
+    const tanX = Math.cos(theta);
+    const tanZ = -Math.sin(theta);
     k.push({
       frame: orbitFrame,
-      position: [
-        orbitCenter[0] + orbitR * Math.sin(theta),
-        orbitH,
-        orbitCenter[2] + orbitR * Math.cos(theta),
+      position: [camX, orbitH, camZ],
+      lookAt: [
+        midActiveX + tanX * 6,
+        2.0 - 1.5,
+        tanZ * 6,
       ],
-      lookAt: [midActiveX, 2, 0],
       fov: 44,
     });
   }
@@ -391,26 +411,36 @@ export function buildKeyframes(
     });
   }
 
-  // ---- 780..840 Emerge + outro -----
+  // ---- 810..870 Emerge: rise-then-sweep to the elevated overhead outro angle -----
+  // Two intermediate keyframes create a "helicopter pulls up and sweeps forward"
+  // motion: first rise above the canyon, then arc toward the front overhead position.
   k.push({
-    frame: EMERGE_END - 30,
-    position: [midActiveX + 6, 10.5, 26],
-    lookAt: [midActiveX, 2.0, 0],
-    fov: 38,
+    frame: CANYON_END + 20,  // 830 — rise above the canyon
+    position: [midActiveX, 22, 20],
+    lookAt: [midActiveX, 2.0, 2],
+    fov: 40,
+  });
+  k.push({
+    frame: CANYON_END + 40,  // 850 — sweep toward overhead front position
+    position: [midActiveX + 4, 30, 25],
+    lookAt: [midActiveX, 2.5, 1],
+    fov: 37,
   });
 
-  // ---- 840..900 Home arc → seamless loop -----
+  // ---- 870..900 Outro holds at elevated overhead position -----
+  // Both EMERGE_END and TOTAL use outroPos so the camera is stationary
+  // during the outro card (frames 870-900).
   k.push({
-    frame: EMERGE_END + 30,
-    position: [midActiveX + 10, 9.5, 22],
-    lookAt: [midActiveX - 1, 2.0, 0],
-    fov: 38,
+    frame: EMERGE_END,  // 870
+    position: outroPos,
+    lookAt: outroLook,
+    fov: outroFov,
   });
   k.push({
-    frame: TOTAL,
-    position: homePos,
-    lookAt: homeLook,
-    fov: homeFov,
+    frame: TOTAL,       // 900
+    position: outroPos,
+    lookAt: outroLook,
+    fov: outroFov,
   });
 
   k.sort((a, b) => a.frame - b.frame);
@@ -441,14 +471,16 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
   );
   const p = palette(theme);
 
-  // Collapse wave progress: 0→1 over frames ENTRY_END→COLLAPSE_END.
-  const collapseProgress = useMemo(
-    () => interpolate(frame, [ENTRY_END, COLLAPSE_END], [0, 1], {
+  // Collapse wave progress: 0→1 over frames COLLAPSE_START→ENTRY_END (1.5s→5s).
+  // Outside that window it returns 0 so bars are at full height during the
+  // overview and then rebuild normally via cameraX reveal during cruise.
+  const collapseProgress = useMemo(() => {
+    if (frame <= COLLAPSE_START || frame >= ENTRY_END) return 0;
+    return interpolate(frame, [COLLAPSE_START, ENTRY_END], [0, 1], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
-    }),
-    [frame],
-  );
+    });
+  }, [frame]);
 
   // Peak focus progress: ramps 0→1 during approach, holds at 1 in canyon,
   // then recovers 1→0 during emerge.
@@ -471,7 +503,7 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
   // Current month during cruise, for lower-third indicator.
   // Uses Wednesday (weekday index 3) of the nearest week column as anchor.
   const currentMonth = useMemo<number | null>(() => {
-    if (frame < COLLAPSE_END || frame > CRUISE_END) return null;
+    if (frame < ENTRY_END || frame > CRUISE_END) return null;
     const geom = gridGeometry(data);
     const stride = geom.cellSize + geom.gap;
     const camX = sampleRig(frame, keyframes).position[0];
@@ -488,7 +520,7 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
   const cameraX = useMemo(() => {
     // Cruise phase only: camera-X based reveal so bars build in as camera sweeps.
     // All other phases use sentinel 1e6 (all bars visible).
-    if (frame >= COLLAPSE_END && frame <= CRUISE_END) {
+    if (frame >= ENTRY_END && frame <= CRUISE_END) {
       return sampleRig(frame, keyframes).position[0];
     }
     return 1e6;
@@ -546,8 +578,8 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
         placement="center"
         fadeFrames={18}
       >
-        <div style={{ fontSize: 88, fontWeight: 700 }}>{username}</div>
-        <div style={{ fontSize: 60, marginTop: 16, opacity: 0.85 }}>
+        <div style={{ fontSize: 88, fontWeight: 700, textShadow: "0 2px 24px rgba(0,0,0,0.85), 0 0 8px rgba(0,0,0,0.6)" }}>{username}</div>
+        <div style={{ fontSize: 60, marginTop: 16, opacity: 0.85, textShadow: "0 2px 16px rgba(0,0,0,0.8)" }}>
           {data.year} · {data.totalContributions.toLocaleString()} contribution
           {data.totalContributions === 1 ? "" : "s"}
         </div>
@@ -585,12 +617,12 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
         />
       )}
 
-      {/* Outro: side-profile chart card. */}
+      {/* Outro: hero-card layout — camera is at homePos, text matches intro style. */}
       <ChartOutro
         year={data.year}
         total={data.totalContributions}
         username={username}
-        fromFrame={EMERGE_END}
+        fromFrame={EMERGE_END - 15}
         toFrame={TOTAL}
         theme={theme}
       />
@@ -663,8 +695,11 @@ const LowerThirdWatermark: React.FC<{
 };
 
 /**
- * Chart-out overlay during the side-profile pose: simple corner card with
- * year + total formatted as a data line, sitting above the silhouette.
+ * Outro overlay modelled after the gh-skyline hero card (Image 3):
+ * - Text anchored to the lower third (justifyContent:"flex-end").
+ * - Total contributions as the primary hero element in accent green.
+ * - "Your skyline." tagline + "Let's build. github/gh-skyline" CTA below.
+ * - Left-aligned, matching the reference card's layout.
  */
 const ChartOutro: React.FC<{
   year: number;
@@ -678,49 +713,54 @@ const ChartOutro: React.FC<{
   const p = palette(theme);
   const opacity = interpolate(
     frame,
-    [fromFrame, fromFrame + 25, toFrame - 10, toFrame],
+    [fromFrame, fromFrame + 20, toFrame - 5, toFrame],
     [0, 1, 1, 1],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
   if (opacity <= 0) return null;
+  const accentColor = theme === "dark" ? "#39d353" : "#26a641";
+  const dimColor = theme === "dark" ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)";
   return (
     <AbsoluteFill
       style={{
-        justifyContent: "flex-start",
-        alignItems: "center",
-        padding: 100,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "flex-end",
+        alignItems: "flex-start",
+        paddingBottom: 150,
+        paddingLeft: 100,
         pointerEvents: "none",
         opacity,
+        fontFamily: `"${MONA_SANS_FONT_FAMILY}", ui-sans-serif, system-ui, sans-serif`,
+        color: p.captionText,
+        textShadow: `0 2px 20px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7)`,
       }}
     >
-      <div
-        style={{
-          color: p.captionText,
-          textShadow: `0 2px 12px ${p.captionShadow}`,
-          fontFamily: `"${MONA_SANS_FONT_FAMILY}", ui-sans-serif, system-ui, sans-serif`,
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 32,
-            opacity: 0.7,
-            letterSpacing: 4,
-            textTransform: "uppercase",
-          }}
-        >
-          @{username.replace(/^@/, "")}
+      {/* @username · year — subdued label above the hero line */}
+      <div style={{ fontSize: 42, fontWeight: 400, letterSpacing: "0.08em", opacity: 0.65, marginBottom: 8, textTransform: "lowercase" }}>
+        @{username.replace(/^@/, "")} · {year}
+      </div>
+      {/* Total contributions — hero element, large green */}
+      <div style={{ fontSize: 120, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: accentColor, marginBottom: 4 }}>
+        {total.toLocaleString()} contributions.
+      </div>
+      {/* Tagline */}
+      <div style={{ fontSize: 120, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: p.captionText, marginBottom: 48 }}>
+        Your skyline.
+      </div>
+      {/* CTA row */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 44, fontWeight: 600, color: p.captionText, opacity: 0.7 }}>
+          Let's build.
         </div>
-        <div style={{ fontSize: 96, fontWeight: 700, marginTop: 8 }}>
-          {year}
-        </div>
-        <div style={{ fontSize: 52, marginTop: 4, opacity: 0.9 }}>
-          {total.toLocaleString()} contribution{total === 1 ? "" : "s"}
+        <div style={{ fontSize: 32, fontWeight: 400, color: dimColor, letterSpacing: "0.04em" }}>
+          github/gh-skyline
         </div>
       </div>
     </AbsoluteFill>
   );
 };
+
 
 const PeakStatCard: React.FC<{
   caption: PeakCaption;
@@ -742,9 +782,10 @@ const PeakStatCard: React.FC<{
     <AbsoluteFill
       style={{
         display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        paddingTop: 80,
+        alignItems: "flex-end",
+        justifyContent: "flex-start",
+        paddingTop: 60,
+        paddingRight: 80,
         pointerEvents: "none",
       }}
     >
@@ -753,10 +794,11 @@ const PeakStatCard: React.FC<{
           opacity,
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
+          alignItems: "flex-end",
           gap: 8,
           fontFamily: MONA_SANS_FONT_FAMILY,
           color: p.captionText,
+          textAlign: "right",
         }}
       >
         <div

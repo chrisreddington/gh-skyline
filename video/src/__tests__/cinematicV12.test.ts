@@ -27,7 +27,7 @@ describe("SkylineYear cinematic v12 choreography", () => {
     });
   });
 
-  it("returns to the hero-card angle at the loop point", () => {
+  it("ends at the elevated overhead outro position at the loop point", () => {
     const placements = layoutBars(year);
     const densityCurve = buildRelativeDensityCurve(placements, 64, 2.5);
     const peak = pickPeakTarget(year, placements, 0);
@@ -35,6 +35,7 @@ describe("SkylineYear cinematic v12 choreography", () => {
     const activeXs = placements.filter((p) => p.inYear && p.count > 0).map((p) => p.x);
     const midActiveX = (Math.min(...activeXs) + Math.max(...activeXs)) / 2;
 
+    // Frame 0: side-view hero card angle (title card)
     expect(keyframes[0]).toMatchObject({
       frame: 0,
       position: [midActiveX + 14, 10, 20],
@@ -42,11 +43,12 @@ describe("SkylineYear cinematic v12 choreography", () => {
       fov: 38,
       cut: true,
     });
+    // Frame 900: elevated overhead outro angle (hero card reference Image 3)
     expect(keyframes.at(-1)).toMatchObject({
       frame: 900,
-      position: [midActiveX + 14, 10, 20],
-      lookAt: [midActiveX - 2, 1.8, 0],
-      fov: 38,
+      position: [midActiveX, 34, 26],
+      lookAt: [midActiveX, 2.5, 0],
+      fov: 35,
     });
   });
 
@@ -55,21 +57,18 @@ describe("SkylineYear cinematic v12 choreography", () => {
     const densityCurve = buildRelativeDensityCurve(placements, 64, 2.5);
     const peak = pickPeakTarget(year, placements, 0);
     const keyframes = buildKeyframes(year, placements, peak, densityCurve, true);
-    const activeXs = placements.filter((p) => p.inYear && p.count > 0).map((p) => p.x);
-    const midActiveX = (Math.min(...activeXs) + Math.max(...activeXs)) / 2;
 
+    // Orbit keyframes are in range (450, 630] with orbitH=11 camera height.
     const orbitKeyframes = keyframes.filter(
       (kf) =>
-        kf.frame > 480 &&
-        kf.frame <= 570 &&
-        kf.lookAt[0] === midActiveX &&
-        kf.lookAt[1] === 2 &&
-        kf.lookAt[2] === 0,
+        kf.frame > 450 &&
+        kf.frame <= 630 &&
+        Math.abs(kf.position[1] - 11) < 0.01,
     );
 
     expect(orbitKeyframes).toHaveLength(8);
-    expect(orbitKeyframes[0]?.frame).toBe(491);
-    expect(orbitKeyframes.at(-1)?.frame).toBe(570);
+    expect(orbitKeyframes[0]?.frame).toBe(473);
+    expect(orbitKeyframes.at(-1)?.frame).toBe(630);
   });
 });
 
