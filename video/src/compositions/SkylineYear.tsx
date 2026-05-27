@@ -284,20 +284,22 @@ export function buildKeyframes(
   const homeLook: [number, number, number] = [midActiveX - 2, 1.8, 0];
   const homeFov = 38;
 
-  // Outro position: "horizon" framing v18c — calibrated for the type-kiss.
-  // Camera at Y=18 / Z=57 with lookAt at Y=7 lifts the skyline silhouette so
-  // the tallest bar peaks sit at ~40% from the top of the frame. "Your skyline."
-  // at top 34% with a 120px font places its descenders ('y', '.') at ~40%,
-  // physically intersecting the peak bars (the figure/ground interlock that
-  // earlier iterations missed). ~96% horizontal fill (2% margin per side),
-  // FOV 30° for telephoto compression. Skyline occupies ~32% of vertical
-  // frame (40-72%), giving it real mass rather than reading as a footer.
-  // Lower 28% beneath the skyline base is clean dark floor for the CTA.
+  // Outro position: v21 — partnership iteration after v20.
+  // Camera raised (Y 18→20) and looking further down (Y 7→3) to raise the
+  // skyline silhouette in the frame, filling the gap between "Your skyline."
+  // and the CTA. Depression angle goes 10.9° → 16.6° — still in the
+  // "city/architecture" zone (15-17° is a mid-rise window looking across
+  // the district), far from v19's flat-sticks failure.
   //
-  // Refs: Blade Runner 2049 poster, Spotify Wrapped end cards, GitHub Octoverse
-  // 2023 hero. Earned overlap via descender-kiss, not chyron-on-screenshot.
-  const outroPos: [number, number, number] = [midActiveX, 18, 57];
-  const outroLook: [number, number, number] = [midActiveX, 7, 0];
+  // Bar peaks now sit at ~41% from top (was 52%), bar base ~72% (was 78%).
+  // Net effect: the skyline fills the lower-middle band of the frame,
+  // descender-kiss with "Your skyline." preserved (text moved up to ~31% so
+  // its descenders land at ~41% = peak height).
+  //
+  // FOV 30° (~45mm full-frame equivalent) unchanged — telephoto compression
+  // preserved. Z=57 unchanged — horizontal coverage maintained.
+  const outroPos: [number, number, number] = [midActiveX, 20, 57];
+  const outroLook: [number, number, number] = [midActiveX, 3, 0];
   const outroFov = 30;
 
   const k: CameraKeyframe[] = [];
@@ -433,16 +435,15 @@ export function buildKeyframes(
   }
 
   // ---- Emerge: single arc keyframe then outro hold -----
-  // Smooth midpoint between canyon exit and the horizon outroPos. Camera rises
-  // (Y 10 → 14 → 18), pulls back (Z 26 → 42 → 57), and lookAt slides upward
-  // (1.5 → 4 → 7) so the skyline pulls down into the lower frame as the camera
-  // backs off into "horizon" altitude. FOV opens from 48° → 38° → 30° for a
-  // gentle telephoto compression at the final rest position.
+  // Smooth midpoint between canyon exit and v21 outroPos [midX, 20, 57]/[3, 0].
+  // Camera rises (Y 10 → 16 → 20), pulls back (Z 26 → 48 → 57), and lookAt
+  // slides DOWN (1.5 → 3.5 → 3) so the skyline lifts into the lower-middle
+  // band of the frame as the camera backs off into outro altitude.
   k.push({
     frame: CANYON_END + 30,  // 936 — arc midpoint
-    position: [midActiveX - 1, 14, 42],
-    lookAt: [midActiveX, 4, -1],
-    fov: 38,
+    position: [midActiveX - 1, 16, 48],
+    lookAt: [midActiveX, 3.5, -1],
+    fov: 34,
   });
 
   // ---- EMERGE_END..TOTAL Outro holds at hero-card-style elevated position -----
@@ -834,7 +835,7 @@ const ChartOutro: React.FC<{
       <div
         style={{
           position: "absolute",
-          top: "14%",
+          top: "10%",
           left: 0,
           right: 0,
           textAlign: "center",
@@ -853,7 +854,7 @@ const ChartOutro: React.FC<{
       <div
         style={{
           position: "absolute",
-          top: "18%",
+          top: "14%",
           left: 0,
           right: 0,
           textAlign: "center",
@@ -881,7 +882,7 @@ const ChartOutro: React.FC<{
       <div
         style={{
           position: "absolute",
-          top: "48%",
+          top: "31%",
           left: 0,
           right: 0,
           textAlign: "center",
@@ -905,7 +906,7 @@ const ChartOutro: React.FC<{
       <div
         style={{
           position: "absolute",
-          bottom: 70,
+          bottom: 120,
           left: 0,
           right: 0,
           textAlign: "center",

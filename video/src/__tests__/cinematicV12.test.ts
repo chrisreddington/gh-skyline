@@ -43,12 +43,15 @@ describe("SkylineYear cinematic v12 choreography", () => {
       fov: 38,
       cut: true,
     });
-    // Frame 966: hero-card-style elevated outro angle (last keyframe; sampleRig
-    // clamps to this position for all frames >= 966, giving a rock-solid hold).
+    // Frame 966: v21 horizon outro — camera raised + look-down per partnership
+    // iteration with cinematographer. pos Y 20, lookAt Y 3 gives a 16.6°
+    // depression (vs v18d's 10.9°) — skyline silhouette lifts into the
+    // lower-middle band of the frame, filling the gap between "Your skyline."
+    // and "Let's build.". FOV 30° (~45mm) preserved for telephoto compression.
     expect(keyframes.at(-1)).toMatchObject({
       frame: 966,
-      position: [midActiveX, 18, 57],
-      lookAt: [midActiveX, 7, 0],
+      position: [midActiveX, 20, 57],
+      lookAt: [midActiveX, 3, 0],
       fov: 30,
     });
   });
