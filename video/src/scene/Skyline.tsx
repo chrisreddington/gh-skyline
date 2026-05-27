@@ -140,7 +140,7 @@ export function computeCollapseMultiplier(
     return 1;
   }
   const waveFront = maxX + bandwidth * 0.5 -
-    (maxX - minX + bandwidth) * easeInOutCubic(collapseProgress ?? 0);
+    (maxX - minX + bandwidth * 2) * easeInOutCubic(collapseProgress ?? 0);
   const u = Math.max(0, Math.min(1, (barX - waveFront) / bandwidth));
   return 1 - easeOutCubic(u);
 }

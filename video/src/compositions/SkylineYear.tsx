@@ -106,13 +106,10 @@ const COLLAPSE_START = 90;    // 3.0s — bars start collapsing R→L. Begins ju
                               // the camera commits to the descent at F75, so the
                               // motion telegraphs naturally: camera leaves first,
                               // bars follow.
-const COLLAPSE_END = 135;     // 4.5s — bars fully collapsed BEFORE the camera arrives
-                              // at the skyline (F150). User feedback: previously the
-                              // collapse ran 75→150 and the camera "arrived to find
-                              // bars still finishing" which read as artificial wait.
-                              // Now the collapse is over 45 frames (was 75) — 40%
-                              // faster, and done with a 15-frame buffer before dive
-                              // arrival so the cruise reveal can begin cleanly.
+const COLLAPSE_END = 125;     // 4.17s — bars fully collapsed by F125 (user direction).
+                              // Wave bandwidth widened in computeCollapseMultiplier so
+                              // the leftmost bar actually reaches mult=0 here (was
+                              // leaving a ~12% remnant on the leftmost column).
 const TITLE_END = 99;         // 3.3s — kept for LowerThirdWatermark fade-in timing
 const ENTRY_END = 150;        // 5s — dive complete; cruise begins
 const COLLAPSE_RELEASE = 190; // 6.33s — collapse fully released; bars now grow via cruise reveal
@@ -322,7 +319,11 @@ export function buildKeyframes(
   // through F75, then commit to the descent. One synchronized departure
   // with the text fade-out.
   k.push({ frame: 0,  position: homePos, lookAt: homeLook, fov: homeFov, cut: true });
-  k.push({ frame: 75, position: homePos, lookAt: homeLook, fov: homeFov });
+  // cut:true on F75 forces a discrete hold from F0 → F75 and zeros the
+  // outgoing tangent at F75, preventing the Catmull-Rom spline from
+  // anticipating the leftward F120 keyframe with an early rightward bulge
+  // (the "tilt right then slam left" pattern visible at F0..F60).
+  k.push({ frame: 75, position: homePos, lookAt: homeLook, fov: homeFov, cut: true });
 
   // ---- F75..F150 Descent into the street -----
   // v25 DP-prescribed intermediate at F120 to prevent Catmull-Rom overshoot
@@ -923,25 +924,10 @@ const ChartOutro: React.FC<{
   const titleOpacity = fadeIn(6, 18);
   const ctaOpacity = fadeIn(14, 18);
 
-  // v25 loop-seam tail fade — the stat and CTA fade out over the last 18
-  // frames of the outro so that by the loop cut (final rendered frame ==
-  // toFrame - 1, since durationInFrames = toFrame) the outro has settled to
-  // "caption + tagline + atmosphere" only — which is exactly what F0 (the
-  // new intro hero card) shows. Motion-editor diagnosis: the green stat is
-  // the optical anchor of the outro card; if it's still present at the loop
-  // cut the cut to F0 (no stat) reads as a hard pop. Caption and tagline
-  // pass through this window unchanged so the eye has continuity across
-  // the seam.
-  const easeInCubic = (t: number) => t * t * t;
-  const tailFadeStart = toFrame - 19; // last rendered frame = toFrame - 1
-  const tailFadeEnd = toFrame - 1;
-  const tailFadeOut = (() => {
-    const t = Math.max(
-      0,
-      Math.min(1, (frame - tailFadeStart) / (tailFadeEnd - tailFadeStart)),
-    );
-    return 1 - easeInCubic(t);
-  })();
+  // v25c: tail-fade REMOVED — user direction. Stat and CTA persist at full
+  // opacity to the very last rendered frame. This trades the seamless loop
+  // for a stronger final beat (the celebration shouldn't dim before it ends).
+  const tailFadeOut = 1;
 
   // Master container fade — fast 6-frame cover for late upstream cuts.
   const masterOpacity = interpolate(

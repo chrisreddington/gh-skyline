@@ -79,9 +79,13 @@ describe("SkylineYear cinematic v12 choreography", () => {
 
 describe("Skyline v12 bar multipliers", () => {
   it("collapses bars from right to left during the wave-down", () => {
-    const leftStanding = computeCollapseMultiplier(0, 0, 30, 0.5, 9);
-    const midRetracting = computeCollapseMultiplier(20, 0, 30, 0.5, 9);
-    const rightCollapsed = computeCollapseMultiplier(30, 0, 30, 0.5, 9);
+    // v25c: wave bandwidth widened to bw*2 so leftmost bar reaches mult=0 by
+    // collapseProgress=1 (was leaving ~12% remnant). Progress of 0.45 now
+    // corresponds to the "wave mid-traversal" scenario this test originally
+    // exercised at 0.5.
+    const leftStanding = computeCollapseMultiplier(0, 0, 30, 0.45, 9);
+    const midRetracting = computeCollapseMultiplier(20, 0, 30, 0.45, 9);
+    const rightCollapsed = computeCollapseMultiplier(30, 0, 30, 0.45, 9);
 
     expect(leftStanding).toBeCloseTo(1, 5);
     expect(midRetracting).toBeLessThan(leftStanding);
