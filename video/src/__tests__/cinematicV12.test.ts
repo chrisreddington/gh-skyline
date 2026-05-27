@@ -35,12 +35,13 @@ describe("SkylineYear cinematic v12 choreography", () => {
     const activeXs = placements.filter((p) => p.inYear && p.count > 0).map((p) => p.x);
     const midActiveX = (Math.min(...activeXs) + Math.max(...activeXs)) / 2;
 
-    // Frame 0: side-view hero card angle (title card)
+    // Frame 0 (v25 loop-seam): camera starts at outroPos for a true hold
+    // through F75, so F0 ≈ F1146 — the loop cut is invisible.
     expect(keyframes[0]).toMatchObject({
       frame: 0,
-      position: [midActiveX + 14, 10, 20],
-      lookAt: [midActiveX - 2, 1.8, 0],
-      fov: 38,
+      position: [midActiveX, 22, 50],
+      lookAt: [midActiveX, 5, 0],
+      fov: 30,
       cut: true,
     });
     // Frame 966: v22 outro — bars lowered in frame per trajectory panel
