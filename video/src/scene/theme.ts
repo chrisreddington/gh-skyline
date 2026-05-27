@@ -1,11 +1,17 @@
 /**
  * Theme palettes and helpers. Colours match GitHub's contribution graph so
  * the rendered skyline is visually consistent with the on-site graph.
+ *
+ * Colour ordering: level 1 (few contributions, short bars) = lightest/brightest;
+ * level 4 (many contributions, tall bars) = darkest. This is consistent with
+ * the physical intuition that "more material" saturates the darker end of the
+ * spectrum, and matches the light-theme contribution graph appearance.
  */
 import type { Theme } from "../schema";
 
 export interface ThemePalette {
-  /** 5-stop scale: index 0 = no contributions, 1..4 = increasing intensity. */
+  /** 5-stop scale: index 0 = no contributions, 1..4 = increasing intensity.
+   *  Level 1 = fewest (lightest/brightest), level 4 = most (darkest). */
   readonly levels: readonly [string, string, string, string, string];
   readonly background: string;
   readonly captionText: string;
@@ -16,16 +22,19 @@ export interface ThemePalette {
 
 export const themes: Record<Theme, ThemePalette> = {
   dark: {
-    levels: ["#161b22", "#0e4429", "#006d32", "#26a641", "#39d353"],
+    // Bars use the light-theme contribution palette on the dark background:
+    // L1 (fewest) = lightest green, L4 (most) = darkest green → taller = darker.
+    // Using GitHub light-theme greens rather than purely-reversed dark ones
+    // preserves contrast against the near-black background (#0d1117).
+    levels: ["#161b22", "#9be9a8", "#40c463", "#30a14e", "#216e39"],
     background: "#0d1117",
     captionText: "#f0f6fc",
     captionShadow: "rgba(0,0,0,0.6)",
-    // Highlight = brightened L4 so peak bars stay in the GitHub palette family
-    // instead of introducing a gold/marketing colour the platform never uses.
     highlight: "#7ee787",
     rim: "#1f6feb",
   },
   light: {
+    // L0 = empty (#ebedf0), L1 = lightest (#9be9a8), L4 = darkest (#216e39).
     levels: ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"],
     background: "#ffffff",
     captionText: "#1f2328",
