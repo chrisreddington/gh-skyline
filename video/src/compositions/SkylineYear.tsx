@@ -106,9 +106,11 @@ const COLLAPSE_START = 75;    // 2.5s — bars start collapsing the moment the c
                               // commits to the descent. Camera motion + bar motion
                               // begin in lockstep so the collapse reads intentional,
                               // not rushed.
-const COLLAPSE_END = 135;     // 4.5s — bars fully collapsed by F135 (60-frame window,
-                              // up from 35 in v25c — was too quick to feel deliberate).
-                              // Still finishes 15 frames before camera arrival at F150.
+const COLLAPSE_END = 140;     // 4.67s — bars fully collapsed by F140 (65-frame window).
+                              // v27: extended by 5 frames + linear easing in
+                              // computeCollapseMultiplier so the leftmost bars stay
+                              // visibly shrinking until F134-F138 (was effectively
+                              // gone by F118 with the prior cubic ease).
 const TITLE_END = 99;         // 3.3s — kept for LowerThirdWatermark fade-in timing
 const ENTRY_END = 150;        // 5s — dive complete; cruise begins
 const COLLAPSE_RELEASE = 190; // 6.33s — collapse fully released; bars now grow via cruise reveal
@@ -383,6 +385,34 @@ export function buildKeyframes(
   const orbitH = 9;
   const peakX = hasContent ? peak.centerX : midActiveX;
   const orbitFrames = FLYBY_END - CRUISE_END; // 180 frames = 6s
+
+  // v26 — cruise→orbit bridge keyframe at F465.
+  //
+  // Between cruise end (F450) and orbit seg=1 (F480), FIVE motions stack up
+  // simultaneously in 30 frames: X-slide (~+5u), Y-rise (+4u), Z-pull-back
+  // (+7.5u), lookAt-Z jump (0→5.5), FOV widen (42→48). Catmull-Rom interpolates
+  // them all together as one muddled crossfade — reads as a robotic "jerk" /
+  // "changes direction sharply" rather than a real helicopter banking.
+  //
+  // The bridge keyframe halves the rate of every motion across the handoff by
+  // giving the spline an intermediate anchor. The transition now eases through
+  // TWO beats of moderate motion instead of ONE beat of compounded motion.
+  // Position, lookAt, and FOV are all set at the linear midpoint between F450
+  // (cruise end) and F480 (orbit seg=1, peak-biased).
+  const bridgeLookX0 = midActiveX + 25;        // ≈ cruise end lookAt X
+  const seg1CamX = midActiveX + orbitRX * Math.sin(Math.PI / 4);
+  const seg1NearX = Math.min(
+    Math.max(seg1CamX, midActiveX - 35),
+    midActiveX + 35,
+  );
+  const seg1LookX = seg1NearX + 0.35 * (peakX - seg1NearX);
+  k.push({
+    frame: 465,
+    position: [(midActiveX + 25 + seg1CamX) / 2, 7, 17.25],
+    lookAt: [(bridgeLookX0 + seg1LookX) / 2, 1.9, 2.75],
+    fov: 45,
+  });
+
   for (let seg = 1; seg <= 8; seg++) {
     const theta = (seg / 8) * Math.PI * 2;
     const orbitFrame = CRUISE_END + Math.round((seg / 8) * orbitFrames);
@@ -406,6 +436,26 @@ export function buildKeyframes(
   const peakY = Math.max(2.4, Math.min(peakLift * 0.55 + 1.0, 5.5));
 
   if (hasContent) {
+    // v27: Bridge keyframe at F720 between orbit end (F690) and peak approach
+    // (F750). Without this midpoint, Catmull-Rom over the 60-frame gap let
+    // the camera's X-velocity (≈0.54/frame from orbital tangent at F690)
+    // outrun the lookAt's X-velocity (≈0.38/frame), producing an apparent
+    // left-then-right swing around F720-F730. The bridge halves the rate of
+    // compounded motion and locks the spline against overshoot.
+    // Linear midpoint of position, lookAt, and FOV between F690 and F750.
+    const seg8CamX = midActiveX;                          // sin(2π) = 0
+    const seg8NearX = Math.min(
+      Math.max(seg8CamX, midActiveX - 35),
+      midActiveX + 35,
+    );
+    const seg8LookX = seg8NearX + 0.35 * (px - seg8NearX);
+    k.push({
+      frame: 720,
+      position: [(seg8CamX + (px - 4)) / 2, (9 + peakY + 1.4) / 2, (30 + Z_FLOOR + 4.0) / 2],
+      lookAt: [(seg8LookX + px) / 2, (3.0 + peakY * 0.55) / 2, 2.75],
+      fov: 40,
+    });
+
     k.push({
       frame: APPROACH_END,
       position: [px - 4, peakY + 1.4, Z_FLOOR + 4.0],
@@ -555,17 +605,22 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
 
   // Current month during cruise, for lower-third indicator.
   // Uses Wednesday (weekday index 3) of the nearest week column as anchor.
-  // Uses the camera's LOOKAT X (not its own X) so the reported month matches
-  // the bars the viewer is reading on screen, not where the camera body
-  // happens to sit — the cruise has a ~4-unit lookahead which otherwise
-  // creates a ~1-month sync gap (camera sits in October while viewer sees
-  // November bars).
+  // v27: Uses the camera BODY position (was lookAt) and gates on bar
+  // visibility. The camera body is where the build-front sits — bars are
+  // revealing in the range [cameraX, cameraX + BUILD_LEAD]. Using lookAt
+  // (cameraX + lookAhead during cruise) reported a month ~4 units AHEAD of
+  // where bars were actually appearing, so at F150 the indicator said
+  // "January week 2" while no bars were on screen yet.
   const currentMonth = useMemo<number | null>(() => {
     if (frame < ENTRY_END || frame > CRUISE_END) return null;
     const geom = gridGeometry(data);
-    const stride = geom.cellSize + geom.gap;
     const sample = sampleRig(frame, keyframes);
-    const focusX = sample.lookAt[0];
+    const focusX = sample.position[0];
+    // Hide indicator before the leftmost bar can become visible. Bars build
+    // in within BUILD_LEAD ahead of the camera, so anything before
+    // originX - BUILD_LEAD has zero bars on screen.
+    if (focusX < geom.originX - BUILD_LEAD) return null;
+    const stride = geom.cellSize + geom.gap;
     const weekIdx = Math.max(0, Math.min(
       data.weeks.length - 1,
       Math.round((focusX - geom.originX) / stride),

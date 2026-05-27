@@ -139,8 +139,13 @@ export function computeCollapseMultiplier(
   if ((collapseProgress ?? 0) <= 0) {
     return 1;
   }
+  // v27: linear wave-front progression (was easeInOutCubic). The cubic
+  // accelerated through the middle of the window, causing the leftmost bars
+  // to cross the visibility threshold ~17 frames before COLLAPSE_END. Linear
+  // pacing keeps the wave moving steadily so leftmost bars stay visible
+  // until near the end of the window.
   const waveFront = maxX + bandwidth * 0.5 -
-    (maxX - minX + bandwidth * 2) * easeInOutCubic(collapseProgress ?? 0);
+    (maxX - minX + bandwidth * 2) * (collapseProgress ?? 0);
   const u = Math.max(0, Math.min(1, (barX - waveFront) / bandwidth));
   return 1 - easeOutCubic(u);
 }
