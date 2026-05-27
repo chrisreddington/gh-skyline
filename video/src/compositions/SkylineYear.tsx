@@ -697,7 +697,7 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
         <AbsoluteFill
           style={{
             backgroundColor: p.background,
-            opacity: interpolate(frame, [0, 0, 2], [1, 1, 0], {
+            opacity: interpolate(frame, [0, 1, 2], [1, 1, 0], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
             }),
