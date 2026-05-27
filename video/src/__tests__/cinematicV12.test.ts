@@ -43,9 +43,9 @@ describe("SkylineYear cinematic v12 choreography", () => {
       fov: 38,
       cut: true,
     });
-    // Frame 900: elevated overhead outro angle (hero card reference Image 3)
+    // Frame 960: elevated overhead outro angle (hero card reference Image 3)
     expect(keyframes.at(-1)).toMatchObject({
-      frame: 900,
+      frame: 960,
       position: [midActiveX, 34, 26],
       lookAt: [midActiveX, 2.5, 0],
       fov: 35,

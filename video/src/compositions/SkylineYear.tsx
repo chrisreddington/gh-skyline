@@ -27,6 +27,7 @@ import {
   AbsoluteFill,
   Sequence,
   interpolate,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
   type CalculateMetadataFunction,
@@ -76,7 +77,7 @@ export const skylineYearPropsSchema = z.object({
 export type SkylineYearProps = z.infer<typeof skylineYearPropsSchema>;
 
 export const SKYLINE_YEAR_FPS = 30;
-export const SKYLINE_YEAR_DURATION_FRAMES = 900;
+export const SKYLINE_YEAR_DURATION_FRAMES = 960; // 32s @30fps (3s outro hold)
 
 export const calculateSkylineYearMetadata: CalculateMetadataFunction<
   SkylineYearProps
@@ -108,13 +109,15 @@ const CRUISE_END = 450;       // 15s — density-weighted cruise (bars build in)
 const FLYBY_END = 630;        // 21s — full 360° helicopter orbit (6s)
 const APPROACH_END = 690;     // 23s — approach to peak, focus effect
 const CANYON_END = 810;       // 27s — canyon hold, peak spotlight
-const EMERGE_END = 870;       // 29s — camera back at homePos; outro card starts
-const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 900 — outro holds at homePos (seamless loop)
+const EMERGE_END = 870;       // 29s — camera arrives at elevated outroPos; outro card fades in
+const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 960 (32s) — 3s outro hold at elevated overhead angle
 
 // Z floor — camera never goes closer than this in Z so it doesn't clip into
 // bars (bars span Z ±3.45 with originZ=-3 and cellSize=0.9 → far edge ≈ 3.5).
 // 13.5 keeps the camera ~10 units from bar faces — cinematic "street-level"
 // without going inside the geometry.
+/** Frames over which collapseProgress lingers (decays 1→0) at cruise start. */
+const LINGER_FRAMES = 40;
 const Z_FLOOR = 13.5;
 
 // Bar build-in: how far ahead of the camera the wave extends, in world units.
@@ -337,10 +340,15 @@ export function buildKeyframes(
   }
 
   // ---- 450..630 Full 360° helicopter orbit (6s, leisurely) -----
-  // 8 evenly-spaced keyframes. lookAt uses the tangent-based banking formula:
-  //   tangent = [cos(θ), 0, -sin(θ)] (direction of motion as θ increases)
-  //   lookAt  = center + tangent * 6 + [0, -1.5, 0]
-  // This tilts the camera toward the terrain below as if banking in a helicopter.
+  // 8 evenly-spaced keyframes. lookAt combines an inward pull (toward skyline
+  // center) with a forward tangential bias (direction of travel) to create a
+  // genuine helicopter-banking feel: camera looks slightly "into" the turn
+  // rather than dead at the center point.
+  //   inward  = [-sin(θ), 0, -cos(θ)] (unit vector toward orbit center)
+  //   forward = [ cos(θ), 0, -sin(θ)] (tangent: direction of orbital motion)
+  //   lookAt  = camPos + inward * 15 + forward * 5 + [0, height_bias, 0]
+  // Net: lookAt is ~17.7 units from skyline center (well within the grid span)
+  // with a 5-unit forward offset that reads as the camera leaning into the turn.
   const orbitR = 32;
   const orbitH = 11;
   const orbitFrames = FLYBY_END - CRUISE_END; // 180 frames = 6s
@@ -349,16 +357,19 @@ export function buildKeyframes(
     const orbitFrame = CRUISE_END + Math.round((seg / 8) * orbitFrames);
     const camX = midActiveX + orbitR * Math.sin(theta);
     const camZ = orbitR * Math.cos(theta);
-    // Tangent direction (derivative of position w.r.t. theta, normalised).
+    // Inward unit vector (toward orbit center).
+    const inX = -Math.sin(theta);
+    const inZ = -Math.cos(theta);
+    // Tangent (forward direction of travel).
     const tanX = Math.cos(theta);
     const tanZ = -Math.sin(theta);
     k.push({
       frame: orbitFrame,
       position: [camX, orbitH, camZ],
       lookAt: [
-        midActiveX + tanX * 6,
-        2.0 - 1.5,
-        tanZ * 6,
+        camX + inX * 15 + tanX * 5,
+        1.5,
+        camZ + inZ * 15 + tanZ * 5,
       ],
       fov: 44,
     });
@@ -471,12 +482,35 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
   );
   const p = palette(theme);
 
-  // Collapse wave progress: 0→1 over frames COLLAPSE_START→ENTRY_END (1.5s→5s).
-  // Outside that window it returns 0 so bars are at full height during the
-  // overview and then rebuild normally via cameraX reveal during cruise.
+  // Collapse wave progress: 0→1 over frames COLLAPSE_START→ENTRY_END (1.5s→5s),
+  // then lingers 1→0 over LINGER_FRAMES so bars remain as colored stubs at
+  // cruise start (avoids the abrupt colored→dark pop at the ENTRY_END cut).
   const collapseProgress = useMemo(() => {
-    if (frame <= COLLAPSE_START || frame >= ENTRY_END) return 0;
-    return interpolate(frame, [COLLAPSE_START, ENTRY_END], [0, 1], {
+    if (frame <= COLLAPSE_START) return 0;
+    if (frame < ENTRY_END) {
+      return interpolate(frame, [COLLAPSE_START, ENTRY_END], [0, 1], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
+    }
+    // Linger: slowly decay 1→0 while the cruise camera "catches up" to the bars.
+    const lingerEnd = ENTRY_END + LINGER_FRAMES;
+    if (frame < lingerEnd) {
+      return interpolate(frame, [ENTRY_END, lingerEnd], [1, 0], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
+    }
+    return 0;
+  }, [frame]);
+
+  // Reveal boost: ensures unrevealed bars show their colored layer during the
+  // linger window. Without this, bars with revealT=0 (ahead of cruise camera)
+  // would have ct=0 and their colored InstancedMesh instances moved to y=-1000.
+  // With boost, revealT >= revealBoost > 0 → ct > 0 → colored layer visible.
+  const revealBoost = useMemo(() => {
+    if (frame < ENTRY_END || frame >= ENTRY_END + LINGER_FRAMES) return 0;
+    return interpolate(frame, [ENTRY_END, ENTRY_END + LINGER_FRAMES], [1, 0], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
@@ -552,6 +586,7 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
           showBaseplate
           showLabel={false}
           collapseProgress={collapseProgress}
+          revealBoost={revealBoost}
           focusProgress={focusProgress}
           peakHighlightXs={peakHighlightXs}
         />
@@ -700,6 +735,7 @@ const LowerThirdWatermark: React.FC<{
  * - Total contributions as the primary hero element in accent green.
  * - "Your skyline." tagline + "Let's build. github/gh-skyline" CTA below.
  * - Left-aligned, matching the reference card's layout.
+ * - Invertocat logo before the repo name (theme-aware).
  */
 const ChartOutro: React.FC<{
   year: number;
@@ -720,6 +756,10 @@ const ChartOutro: React.FC<{
   if (opacity <= 0) return null;
   const accentColor = theme === "dark" ? "#39d353" : "#26a641";
   const dimColor = theme === "dark" ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)";
+  // Theme-aware Invertocat: white mark on dark backgrounds, black on light.
+  const logoSrc = staticFile(
+    theme === "dark" ? "images/github-mark-white.svg" : "images/github-mark.svg",
+  );
   return (
     <AbsoluteFill
       style={{
@@ -748,13 +788,22 @@ const ChartOutro: React.FC<{
       <div style={{ fontSize: 120, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: p.captionText, marginBottom: 48 }}>
         Your skyline.
       </div>
-      {/* CTA row */}
+      {/* CTA row: Invertocat + repo name */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ fontSize: 44, fontWeight: 600, color: p.captionText, opacity: 0.7 }}>
           Let's build.
         </div>
-        <div style={{ fontSize: 32, fontWeight: 400, color: dimColor, letterSpacing: "0.04em" }}>
-          github/gh-skyline
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <img
+            src={logoSrc}
+            width={36}
+            height={36}
+            alt="GitHub"
+            style={{ opacity: 0.7, display: "block" }}
+          />
+          <div style={{ fontSize: 32, fontWeight: 400, color: dimColor, letterSpacing: "0.04em" }}>
+            github/gh-skyline
+          </div>
         </div>
       </div>
     </AbsoluteFill>
@@ -769,6 +818,7 @@ const PeakStatCard: React.FC<{
   theme: SkylineYearProps["theme"];
 }> = ({ caption, visibleFromFrame, visibleToFrame, theme }) => {
   const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
   const p = palette(theme);
   const opacity = interpolate(
     frame,
@@ -777,15 +827,18 @@ const PeakStatCard: React.FC<{
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
   if (opacity <= 0) return null;
-  const accentColor = theme === "dark" ? "#39d353" : "#26a641";
+  // Padding is resolution-relative to look consistent at 4K and 1080p.
+  // Golden-ratio vertical position: ~16% from top (upper-right quadrant).
+  const padTop = Math.round(height * 0.16);
+  const padRight = Math.round(width * 0.045);
   return (
     <AbsoluteFill
       style={{
         display: "flex",
         alignItems: "flex-end",
         justifyContent: "flex-start",
-        paddingTop: 60,
-        paddingRight: 80,
+        paddingTop: padTop,
+        paddingRight: padRight,
         pointerEvents: "none",
       }}
     >
@@ -818,7 +871,7 @@ const PeakStatCard: React.FC<{
             fontSize: 120,
             fontWeight: 800,
             lineHeight: 1,
-            color: accentColor,
+            color: p.captionText,
             letterSpacing: "-0.02em",
           }}
         >

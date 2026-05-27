@@ -74,6 +74,13 @@ interface SkylineProps {
    */
   collapseProgress?: number;
   /**
+   * 0→1 override floor for `resolveReveal`. When non-zero, every bar is treated
+   * as at least `revealBoost` revealed, keeping their colored layer visible even
+   * if the cruise camera hasn't reached them yet. Used during the linger window
+   * (ENTRY_END → ENTRY_END+40) to prevent the colored→dark pop at cruise start.
+   */
+  revealBoost?: number;
+  /**
    * 0→1 peak-focus progress (ramps during approach 570→660, holds during canyon).
    * Non-highlight bars shrink toward 20% of their height to spotlight the peak.
    */
@@ -500,6 +507,7 @@ export const Skyline: React.FC<SkylineProps> = ({
   showEmptyTiles = true,
   showBaseplate = false,
   collapseProgress,
+  revealBoost,
   focusProgress,
   peakHighlightXs,
 }) => {
@@ -515,10 +523,16 @@ export const Skyline: React.FC<SkylineProps> = ({
   );
 
   // Resolve the reveal callback into a unified per-bar function.
+  // revealBoost (0→1) clamps the result from below during the linger window
+  // after ENTRY_END, so bars that the cruise camera hasn't reached yet still
+  // show their colored layer (avoids the colored→dark pop at cruise start).
   const resolveReveal = useMemo<(bar: BarPlacement) => number>(() => {
-    if (typeof reveal === "function") return reveal;
+    const boost = revealBoost ?? 0;
+    if (typeof reveal === "function") {
+      return (bar) => Math.max(reveal(bar), boost);
+    }
     if (typeof reveal === "number") {
-      const r = reveal;
+      const r = Math.max(reveal, boost);
       return () => r;
     }
     if (cameraX !== undefined) {
@@ -528,11 +542,12 @@ export const Skyline: React.FC<SkylineProps> = ({
         // Bars at or behind camera (negative ahead) = built (1).
         // Bars within `lead` ahead = revealing.
         // Bars further ahead = unbuilt (0).
-        return 1 - Math.min(1, Math.max(0, ahead / lead));
+        const base = 1 - Math.min(1, Math.max(0, ahead / lead));
+        return Math.max(base, boost);
       };
     }
-    return () => 1;
-  }, [reveal, cameraX, buildLeadDistance]);
+    return () => Math.max(1, boost);
+  }, [reveal, cameraX, buildLeadDistance, revealBoost]);
 
   return (
     <group>
