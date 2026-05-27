@@ -282,44 +282,48 @@ const ActiveBars: React.FC<{
       mesh.frustumCulled = false;
     };
 
-    // Base layer: dark stub visible only for bars not yet revealed. Once a bar's
-    // reveal starts (revealT > 0), the colored layer takes over the full height
-    // so bars always display their correct color — no "grow in dark" phase.
+    // Base layer: hidden completely. With revealBoost removed, bars grow with
+    // their proper colors directly from the colored layers — no "grow in dark"
+    // intermediate phase is needed. Empty/no-contribution days are still
+    // rendered as flat tiles by EmptyTiles separately.
     applyMatrices(
       baseRef.current,
       bars,
-      (_fullH, _ct, rT) => (rT > 0 ? 0 : _fullH),
+      () => 0,
       (_baseH, layerH) => layerH / 2,
       (bar) => bar.level,
     );
 
-    // Colored layers: show the bar at its full effective height immediately when
-    // revealT > 0. The tiny per-level epsilon prevents Z-fighting between layers.
+    // Colored layers: render the bar at its full effective height directly.
+    // fullHEffective already incorporates revealMul × collapseMul × focusMul,
+    // so bars grow gradually as the cruise camera reveals them, and shrink/lift
+    // during collapse/focus moments — all with their proper level color.
+    // The tiny per-level epsilon (0.0015) prevents Z-fighting between layers.
     applyMatrices(
       l1Ref.current,
       l1,
-      (fullH, _ct, rT) => (rT > 0 ? fullH + 0 * 0.0015 : 0),
+      (fullH) => fullH + 0 * 0.0015,
       (_baseH, layerH) => layerH / 2,
       () => 1,
     );
     applyMatrices(
       l2Ref.current,
       l2,
-      (fullH, _ct, rT) => (rT > 0 ? fullH + 1 * 0.0015 : 0),
+      (fullH) => fullH + 1 * 0.0015,
       (_baseH, layerH) => layerH / 2,
       () => 2,
     );
     applyMatrices(
       l3Ref.current,
       l3,
-      (fullH, _ct, rT) => (rT > 0 ? fullH + 2 * 0.0015 : 0),
+      (fullH) => fullH + 2 * 0.0015,
       (_baseH, layerH) => layerH / 2,
       () => 3,
     );
     applyMatrices(
       l4Ref.current,
       l4,
-      (fullH, _ct, rT) => (rT > 0 ? fullH + 3 * 0.0015 : 0),
+      (fullH) => fullH + 3 * 0.0015,
       (_baseH, layerH) => layerH / 2,
       () => 4,
     );

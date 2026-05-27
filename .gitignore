@@ -37,4 +37,5 @@ go.work
 go.work.sum
 
 # env file
-.env
+.env.playwright-cli/
+video/analyze_camera.ts

@@ -43,12 +43,13 @@ describe("SkylineYear cinematic v12 choreography", () => {
       fov: 38,
       cut: true,
     });
-    // Frame 996: elevated overhead outro angle (hero card reference Image 3)
+    // Frame 966: hero-card-style elevated outro angle (last keyframe; sampleRig
+    // clamps to this position for all frames >= 966, giving a rock-solid hold).
     expect(keyframes.at(-1)).toMatchObject({
-      frame: 996,
-      position: [midActiveX + 8, 14, 30],
-      lookAt: [midActiveX - 4, 2.5, 0],
-      fov: 44,
+      frame: 966,
+      position: [midActiveX, 24, 50],
+      lookAt: [midActiveX, -10, -3],
+      fov: 38,
     });
   });
 
@@ -58,17 +59,17 @@ describe("SkylineYear cinematic v12 choreography", () => {
     const peak = pickPeakTarget(year, placements, 0);
     const keyframes = buildKeyframes(year, placements, peak, densityCurve, true);
 
-    // Orbit keyframes are in range (450, 630] with orbitH=9 camera height.
+    // Orbit keyframes are in range (450, 690] with orbitH=9 camera height.
     const orbitKeyframes = keyframes.filter(
       (kf) =>
         kf.frame > 450 &&
-        kf.frame <= 630 &&
+        kf.frame <= 690 &&
         Math.abs(kf.position[1] - 9) < 0.01,
     );
 
     expect(orbitKeyframes).toHaveLength(8);
-    expect(orbitKeyframes[0]?.frame).toBe(473);
-    expect(orbitKeyframes.at(-1)?.frame).toBe(630);
+    expect(orbitKeyframes[0]?.frame).toBe(480);
+    expect(orbitKeyframes.at(-1)?.frame).toBe(690);
   });
 });
 
