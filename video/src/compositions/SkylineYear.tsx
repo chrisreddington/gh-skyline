@@ -532,14 +532,20 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
 
   // Current month during cruise, for lower-third indicator.
   // Uses Wednesday (weekday index 3) of the nearest week column as anchor.
+  // Uses the camera's LOOKAT X (not its own X) so the reported month matches
+  // the bars the viewer is reading on screen, not where the camera body
+  // happens to sit — the cruise has a ~4-unit lookahead which otherwise
+  // creates a ~1-month sync gap (camera sits in October while viewer sees
+  // November bars).
   const currentMonth = useMemo<number | null>(() => {
     if (frame < ENTRY_END || frame > CRUISE_END) return null;
     const geom = gridGeometry(data);
     const stride = geom.cellSize + geom.gap;
-    const camX = sampleRig(frame, keyframes).position[0];
+    const sample = sampleRig(frame, keyframes);
+    const focusX = sample.lookAt[0];
     const weekIdx = Math.max(0, Math.min(
       data.weeks.length - 1,
-      Math.round((camX - geom.originX) / stride),
+      Math.round((focusX - geom.originX) / stride),
     ));
     const wednesdayIdx = weekIdx * 7 + 3;
     const anchor = placements[wednesdayIdx];
@@ -600,6 +606,15 @@ export const SkylineYear: React.FC<SkylineYearProps> = ({
           </Sequence>
         )}
       </ThreeCanvas>
+
+      {/* Global atmosphere — applies the outro's cinematic grammar (sky
+          recession + warm low rim + bottom vignette) at reduced intensity
+          across the whole video. Sits above the ThreeCanvas so the 3D world
+          gets a coherent atmospheric envelope from frame 0, rather than only
+          earning it in the final 6s. The outro's heavier overlays still
+          stack on top inside ChartOutro so the celebration moment lands
+          with extra weight. */}
+      <GlobalAtmosphere theme={theme} fadeOutFromFrame={EMERGE_END - 30} />
 
       {/* Title card — overlays the live build. */}
       <Captions
@@ -721,6 +736,91 @@ const LowerThirdWatermark: React.FC<{
           </span>
         )}
       </div>
+    </AbsoluteFill>
+  );
+};
+
+/**
+ * Global cinematic atmosphere — same compositional grammar as ChartOutro
+ * (sky recession, warm low rim, soft bottom vignette) at reduced intensity,
+ * applied across the entire video so every frame feels lit, not unlit-WebGL.
+ *
+ * Crossfades to zero just before ChartOutro's own heavier atmosphere takes
+ * over (around F936) so the two systems don't double-up at the cut.
+ *
+ * Pure HTML overlay — sits over the ThreeCanvas, beneath the captions. All
+ * layers are `pointerEvents: "none"`.
+ */
+const GlobalAtmosphere: React.FC<{
+  theme: SkylineYearProps["theme"];
+  fadeOutFromFrame: number;
+}> = ({ theme: _theme, fadeOutFromFrame }) => {
+  const frame = useCurrentFrame();
+  // Fade in over the first 8 frames (after the WebGL warm-up cover) and out
+  // over the 30 frames leading into the outro arc — ChartOutro's overlays
+  // pick up the duty from there.
+  const intro = interpolate(frame, [0, 8], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const outroFade = interpolate(
+    frame,
+    [fadeOutFromFrame, fadeOutFromFrame + 30],
+    [1, 0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const masterOpacity = Math.min(intro, outroFade);
+  return (
+    <AbsoluteFill style={{ pointerEvents: "none", opacity: masterOpacity }}>
+      {/* Sky recession — deeper at top, transparent mid, warmer near-black
+          at the bottom. Stronger than initial pass (was ~32%/30% — too
+          subtle to register against the dark bg). Bumped to outro parity
+          for the gradient stops; the heavy bottom vignette and ground lift
+          remain outro-exclusive so the celebration moment still adds
+          punch over this baseline. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(to bottom, rgba(14,22,38,0.65) 0%, rgba(0,0,0,0) 32%, rgba(0,0,0,0) 64%, rgba(18,14,8,0.55) 100%)",
+        }}
+      />
+      {/* Warm low rim — dusk light implication. More visible now (~9%
+          opacity). Stays out of the skyline-active vertical band. */}
+      <div
+        style={{
+          position: "absolute",
+          left: "8%",
+          right: "8%",
+          bottom: "6%",
+          height: "22%",
+          background:
+            "radial-gradient(ellipse at center bottom, rgba(240,136,62,0.09) 0%, rgba(240,136,62,0) 60%)",
+          filter: "blur(12px)",
+        }}
+      />
+      {/* Cool sky tint at top — adds atmospheric perspective so distant
+          bars feel set against a sky, not a void. Very subtle (~6%). */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse 90% 50% at 50% 0%, rgba(40,70,110,0.06) 0%, rgba(40,70,110,0) 60%)",
+        }}
+      />
+      {/* Soft edge vignette — gentle camera framing. Bumped from 28% → 42%
+          at the corners; the 50%-radius transparent core means it never
+          touches the active scene. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse 100% 80% at 50% 50%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.42) 100%)",
+        }}
+      />
     </AbsoluteFill>
   );
 };

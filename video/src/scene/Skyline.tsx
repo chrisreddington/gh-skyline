@@ -94,6 +94,16 @@ interface SkylineProps {
 const TEMP_OBJECT = new THREE.Object3D();
 
 /**
+ * Minimum bar height (in world units) below which a bar is hidden entirely
+ * rather than rendered as a flat plate at y≈0. Sits above the EmptyTile top
+ * surface (y≈0.06) so the transition from "empty grid cell" to "growing bar"
+ * is a clean cut, never a z-fight. Eliminated the mosaic flicker on the
+ * unbuilt grid where bars at sub-pixel heights were fighting the baseplate
+ * top face for the depth buffer.
+ */
+const HIDE_THRESHOLD = 0.05;
+
+/**
  * Spring-with-overshoot easing for bar reveals. t in [0,1] → height multiplier
  * that overshoots to ~1.08 around t=0.7 and settles to 1.0 at t=1. Cheap
  * approximation of a damped spring; no React-spring dependency.
@@ -260,14 +270,22 @@ const ActiveBars: React.FC<{
           focusProgress,
           peakHighlightXs,
         );
-        const fullHEffective = Math.max(
-          1e-4,
-          bar.height * revealMul * collapseMul * focusMul,
-        );
+        // Raw effective height before any clamp. If the bar should be
+        // invisible at this frame (collapse, pre-reveal, focus shrink), keep
+        // it at 0 so the hide branch below parks it offscreen — clamping to
+        // a sub-pixel positive value caused z-fighting with the baseplate
+        // (y∈[-0.2,0]) and the EmptyTile layer (y=0.04), producing the
+        // mosaic flicker on the unbuilt grid.
+        const rawH = bar.height * revealMul * collapseMul * focusMul;
+        const fullHEffective = rawH;
         const ct = revealColourProgress(revealT, getColourLevel(bar));
         const baseH = fullHEffective * (1 - ct);
         const layerH = getLayerHeight(fullHEffective, ct, revealT);
-        if (layerH < 1e-4) {
+        // Hide threshold (0.05) sits comfortably above the EmptyTile top
+        // surface at y=0.06 — bars only appear once they would have visible
+        // mass above that surface, so the transition from "empty cell" to
+        // "growing bar" is a clean cut, not a z-fight.
+        if (layerH < HIDE_THRESHOLD) {
           TEMP_OBJECT.position.set(bar.x, -1000, bar.z);
           TEMP_OBJECT.scale.set(cellSize, 0.0001, cellSize);
         } else {
