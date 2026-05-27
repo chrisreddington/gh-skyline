@@ -77,7 +77,7 @@ export const skylineYearPropsSchema = z.object({
 export type SkylineYearProps = z.infer<typeof skylineYearPropsSchema>;
 
 export const SKYLINE_YEAR_FPS = 30;
-export const SKYLINE_YEAR_DURATION_FRAMES = 960; // 32s @30fps (3s outro hold)
+export const SKYLINE_YEAR_DURATION_FRAMES = 996; // 33.2s @30fps (3s outro hold)
 
 export const calculateSkylineYearMetadata: CalculateMetadataFunction<
   SkylineYearProps
@@ -108,9 +108,9 @@ const ENTRY_END = 150;        // 5s — dive + collapse complete; cruise begins
 const CRUISE_END = 450;       // 15s — density-weighted cruise (bars build in)
 const FLYBY_END = 630;        // 21s — full 360° helicopter orbit (6s)
 const APPROACH_END = 690;     // 23s — approach to peak, focus effect
-const CANYON_END = 810;       // 27s — canyon hold, peak spotlight
-const EMERGE_END = 870;       // 29s — camera arrives at elevated outroPos; outro card fades in
-const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 960 (32s) — 3s outro hold at elevated overhead angle
+const CANYON_END = 846;       // 28.2s — canyon hold, peak spotlight
+const EMERGE_END = 906;       // 30.2s — camera arrives at elevated outroPos; outro card fades in
+const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 996 (33.2s) — 3s outro hold at elevated overhead angle
 
 // Z floor — camera never goes closer than this in Z so it doesn't clip into
 // bars (bars span Z ±3.45 with originZ=-3 and cellSize=0.9 → far edge ≈ 3.5).
@@ -285,14 +285,13 @@ export function buildKeyframes(
   const homeLook: [number, number, number] = [midActiveX - 2, 1.8, 0];
   const homeFov = 38;
 
-  // Outro elevated overhead position: camera high + forward so you see top
-  // faces of bars — matches the gh-skyline hero card reference (Image 3).
-  // Camera at ~50° downward from horizontal; full grid visible in upper 60% frame.
-  // Note: frame 900 ≠ frame 0 intentionally — intro angle will be aligned
-  // to this in a follow-up pass once the outro is confirmed looking right.
-  const outroPos: [number, number, number] = [midActiveX, 34, 26];
-  const outroLook: [number, number, number] = [midActiveX, 2.5, 0];
-  const outroFov = 35;
+  // Outro position: moderately elevated 3/4-front view so the skyline occupies
+  // the middle-to-upper portion of the frame and the lower third stays clear for
+  // the ChartOutro text overlay. Similar spirit to the hero card starting angle
+  // but centered and slightly further back to show the full year.
+  const outroPos: [number, number, number] = [midActiveX + 8, 14, 30];
+  const outroLook: [number, number, number] = [midActiveX - 4, 2.5, 0];
+  const outroFov = 44;
 
   const k: CameraKeyframe[] = [];
 
@@ -340,38 +339,33 @@ export function buildKeyframes(
   }
 
   // ---- 450..630 Full 360° helicopter orbit (6s, leisurely) -----
-  // 8 evenly-spaced keyframes. lookAt combines an inward pull (toward skyline
-  // center) with a forward tangential bias (direction of travel) to create a
-  // genuine helicopter-banking feel: camera looks slightly "into" the turn
-  // rather than dead at the center point.
-  //   inward  = [-sin(θ), 0, -cos(θ)] (unit vector toward orbit center)
-  //   forward = [ cos(θ), 0, -sin(θ)] (tangent: direction of orbital motion)
-  //   lookAt  = camPos + inward * 15 + forward * 5 + [0, height_bias, 0]
-  // Net: lookAt is ~17.7 units from skyline center (well within the grid span)
-  // with a 5-unit forward offset that reads as the camera leaning into the turn.
-  const orbitR = 32;
-  const orbitH = 11;
+  // Elliptical orbit: wide along X (RX=55) so the camera sweeps far past the
+  // skyline ends, shallow along Z (RZ=26) so it stays at a comfortable viewing
+  // distance. Height 9 = just above average bar tops, well below peak columns.
+  //
+  // lookAt: instead of a fixed center-pivot (which makes the skyline foreshorten
+  // to a thin line at the side), the camera tracks the nearest active part of the
+  // skyline — like a helicopter passenger looking out the window as the city
+  // slides past, with a 35% bias toward the peak column.
+  const orbitRX = 55;
+  const orbitRZ = 26;
+  const orbitH = 9;
+  const peakX = hasContent ? peak.centerX : midActiveX;
   const orbitFrames = FLYBY_END - CRUISE_END; // 180 frames = 6s
   for (let seg = 1; seg <= 8; seg++) {
     const theta = (seg / 8) * Math.PI * 2;
     const orbitFrame = CRUISE_END + Math.round((seg / 8) * orbitFrames);
-    const camX = midActiveX + orbitR * Math.sin(theta);
-    const camZ = orbitR * Math.cos(theta);
-    // Inward unit vector (toward orbit center).
-    const inX = -Math.sin(theta);
-    const inZ = -Math.cos(theta);
-    // Tangent (forward direction of travel).
-    const tanX = Math.cos(theta);
-    const tanZ = -Math.sin(theta);
+    const camX = midActiveX + orbitRX * Math.sin(theta);
+    const camZ = orbitRZ * Math.cos(theta);
+    // Clamp lookAt X to stay within the active skyline span so the camera
+    // never looks "past" the ends; bias 35% toward peak for a natural focal draw.
+    const nearX = Math.min(Math.max(camX, midActiveX - 35), midActiveX + 35);
+    const lookX = nearX + 0.35 * (peakX - nearX);
     k.push({
       frame: orbitFrame,
       position: [camX, orbitH, camZ],
-      lookAt: [
-        camX + inX * 15 + tanX * 5,
-        1.5,
-        camZ + inZ * 15 + tanZ * 5,
-      ],
-      fov: 44,
+      lookAt: [lookX, 3.0, 5.5],
+      fov: 48,
     });
   }
 
@@ -401,11 +395,19 @@ export function buildKeyframes(
       lookAt: [px + 1.5, peakY * 0.48, 0],
       fov: 28,
     });
+    // Gentle drift at canyon hold end so camera already has upward velocity
+    // when the emerge arc begins — prevents the dead-stop lurch at CANYON_END.
     k.push({
-      frame: CANYON_END,
+      frame: CANYON_END - 20,  // 826 — canyon hold peak (was old CANYON_END=810)
       position: [px + 2.5, peakY + 1.0, Z_FLOOR + 3.8],
       lookAt: [px + 1.5, peakY * 0.5, 0],
       fov: 30,
+    });
+    k.push({
+      frame: CANYON_END,       // 846 — gentle lift already underway
+      position: [px + 2.5, peakY + 3.5, Z_FLOOR + 5.5],
+      lookAt: [px + 1.5, peakY * 0.55 + 0.8, 0.5],
+      fov: 32,
     });
   } else {
     k.push({
@@ -422,33 +424,28 @@ export function buildKeyframes(
     });
   }
 
-  // ---- 810..870 Emerge: rise-then-sweep to the elevated overhead outro angle -----
-  // Two intermediate keyframes create a "helicopter pulls up and sweeps forward"
-  // motion: first rise above the canyon, then arc toward the front overhead position.
+  // ---- Emerge: single arc keyframe then outro hold -----
+  // One intermediate keyframe (offset -8 in X) creates a leftward-then-rightward
+  // arc as the camera rises — reads as helicopter "pull back" without the two
+  // near-identical midpoints that previously caused a perceived pause at frame 860.
   k.push({
-    frame: CANYON_END + 20,  // 830 — rise above the canyon
-    position: [midActiveX, 22, 20],
-    lookAt: [midActiveX, 2.0, 2],
-    fov: 40,
-  });
-  k.push({
-    frame: CANYON_END + 40,  // 850 — sweep toward overhead front position
-    position: [midActiveX + 4, 30, 25],
-    lookAt: [midActiveX, 2.5, 1],
-    fov: 37,
+    frame: CANYON_END + 28,  // 874 — arc peak (camera left-of-center, rising)
+    position: [midActiveX - 8, 18, 22],
+    lookAt: [midActiveX, 7, 0.8],
+    fov: 34,
   });
 
-  // ---- 870..900 Outro holds at elevated overhead position -----
+  // ---- EMERGE_END..TOTAL Outro holds at elevated overhead position -----
   // Both EMERGE_END and TOTAL use outroPos so the camera is stationary
-  // during the outro card (frames 870-900).
+  // during the outro card (frames 906-996).
   k.push({
-    frame: EMERGE_END,  // 870
+    frame: EMERGE_END,  // 906
     position: outroPos,
     lookAt: outroLook,
     fov: outroFov,
   });
   k.push({
-    frame: TOTAL,       // 900
+    frame: TOTAL,       // 996
     position: outroPos,
     lookAt: outroLook,
     fov: outroFov,
@@ -828,9 +825,9 @@ const PeakStatCard: React.FC<{
   );
   if (opacity <= 0) return null;
   // Padding is resolution-relative to look consistent at 4K and 1080p.
-  // Golden-ratio vertical position: ~16% from top (upper-right quadrant).
-  const padTop = Math.round(height * 0.16);
-  const padRight = Math.round(width * 0.045);
+  // Golden-ratio position: 23.6% from top (upper quadrant), 38.2% from right.
+  const padTop = Math.round(height * 0.236);
+  const padRight = Math.round(width * 0.382);
   return (
     <AbsoluteFill
       style={{

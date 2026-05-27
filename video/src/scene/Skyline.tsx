@@ -241,7 +241,7 @@ const ActiveBars: React.FC<{
     const applyMatrices = (
       mesh: THREE.InstancedMesh | null,
       layerBars: readonly BarPlacement[],
-      getLayerHeight: (fullHeight: number, colourT: number) => number,
+      getLayerHeight: (fullHeight: number, colourT: number, revealT: number) => number,
       getLayerY: (baseHeight: number, layerHeight: number) => number,
       getColourLevel: (bar: BarPlacement) => BucketLevel,
     ) => {
@@ -266,7 +266,7 @@ const ActiveBars: React.FC<{
         );
         const ct = revealColourProgress(revealT, getColourLevel(bar));
         const baseH = fullHEffective * (1 - ct);
-        const layerH = getLayerHeight(fullHEffective, ct);
+        const layerH = getLayerHeight(fullHEffective, ct, revealT);
         if (layerH < 1e-4) {
           TEMP_OBJECT.position.set(bar.x, -1000, bar.z);
           TEMP_OBJECT.scale.set(cellSize, 0.0001, cellSize);
@@ -282,39 +282,45 @@ const ActiveBars: React.FC<{
       mesh.frustumCulled = false;
     };
 
+    // Base layer: dark stub visible only for bars not yet revealed. Once a bar's
+    // reveal starts (revealT > 0), the colored layer takes over the full height
+    // so bars always display their correct color — no "grow in dark" phase.
     applyMatrices(
       baseRef.current,
       bars,
-      (fullH, ct) => fullH * (1 - ct),
+      (_fullH, _ct, rT) => (rT > 0 ? 0 : _fullH),
       (_baseH, layerH) => layerH / 2,
       (bar) => bar.level,
     );
+
+    // Colored layers: show the bar at its full effective height immediately when
+    // revealT > 0. The tiny per-level epsilon prevents Z-fighting between layers.
     applyMatrices(
       l1Ref.current,
       l1,
-      (fullH, ct) => fullH * ct,
-      (baseH, layerH) => baseH + layerH / 2,
+      (fullH, _ct, rT) => (rT > 0 ? fullH + 0 * 0.0015 : 0),
+      (_baseH, layerH) => layerH / 2,
       () => 1,
     );
     applyMatrices(
       l2Ref.current,
       l2,
-      (fullH, ct) => fullH * ct,
-      (baseH, layerH) => baseH + layerH / 2,
+      (fullH, _ct, rT) => (rT > 0 ? fullH + 1 * 0.0015 : 0),
+      (_baseH, layerH) => layerH / 2,
       () => 2,
     );
     applyMatrices(
       l3Ref.current,
       l3,
-      (fullH, ct) => fullH * ct,
-      (baseH, layerH) => baseH + layerH / 2,
+      (fullH, _ct, rT) => (rT > 0 ? fullH + 2 * 0.0015 : 0),
+      (_baseH, layerH) => layerH / 2,
       () => 3,
     );
     applyMatrices(
       l4Ref.current,
       l4,
-      (fullH, ct) => fullH * ct,
-      (baseH, layerH) => baseH + layerH / 2,
+      (fullH, _ct, rT) => (rT > 0 ? fullH + 3 * 0.0015 : 0),
+      (_baseH, layerH) => layerH / 2,
       () => 4,
     );
   }, [
