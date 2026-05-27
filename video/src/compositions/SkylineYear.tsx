@@ -747,13 +747,29 @@ const ChartOutro: React.FC<{
 }> = ({ year, total, username, fromFrame, toFrame, theme }) => {
   const frame = useCurrentFrame();
   const p = palette(theme);
-  const opacity = interpolate(
+
+  // v18d + atmosphere/stagger (panel additive findings only — no structural
+  // changes to copy, camera, or layout). Each element fades in on its own
+  // schedule so the viewer reads hero → tagline → CTA in cadence.
+  const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+  const fadeIn = (start: number, duration: number) => {
+    const t = Math.max(0, Math.min(1, (frame - (fromFrame + start)) / duration));
+    return easeOutCubic(t);
+  };
+  // Hero cluster (attribution + stat) lands first, "Your skyline." follows at
+  // +6 frames, CTA cascades at +14 frames. Total entry window ~24 frames (0.8s).
+  const heroOpacity = fadeIn(0, 18);
+  const titleOpacity = fadeIn(6, 18);
+  const ctaOpacity = fadeIn(14, 18);
+
+  // Master container fade — fast 6-frame cover for late upstream cuts.
+  const masterOpacity = interpolate(
     frame,
-    [fromFrame, fromFrame + 20, toFrame - 5, toFrame],
-    [0, 1, 1, 1],
+    [fromFrame, fromFrame + 6, toFrame],
+    [0, 1, 1],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
-  if (opacity <= 0) return null;
+  if (masterOpacity <= 0) return null;
   const accentColor = theme === "dark" ? "#39d353" : "#26a641";
   const dimColor = theme === "dark" ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)";
   // Theme-aware Invertocat: white mark on dark backgrounds, black on light.
@@ -764,16 +780,43 @@ const ChartOutro: React.FC<{
     <AbsoluteFill
       style={{
         pointerEvents: "none",
-        opacity,
+        opacity: masterOpacity,
         fontFamily: `"${MONA_SANS_FONT_FAMILY}", ui-sans-serif, system-ui, sans-serif`,
         color: p.captionText,
         textShadow: `0 2px 24px rgba(0,0,0,0.85), 0 0 14px rgba(0,0,0,0.55)`,
       }}
     >
-      {/* Subtle bottom vignette — sinks the CTA into the skyline base so the
-          frame feels grounded rather than floating, without using a hard scrim
-          band. Per cinematographer note: "stops the bars from feeling like
-          cutouts on black". Pushed higher (50%) for stronger floor anchoring. */}
+      {/* Atmospheric vertical gradient — Colorist + DP panel note: the prior
+          flat black background read as unlit WebGL. This adds true
+          cinematographic recession: deeper blue-black at top tapering to
+          near-black mid-frame, then a warmer near-black at the bottom where
+          the skyline sits. Purely additive — does not move any layout. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(to bottom, rgba(8,10,16,0.55) 0%, rgba(0,0,0,0) 38%, rgba(0,0,0,0) 65%, rgba(10,8,4,0.55) 100%)",
+          pointerEvents: "none",
+        }}
+      />
+      {/* Warm low rim glow — sits behind the skyline base, suggests dusk
+          atmosphere meeting the city. Very subtle (~10% opacity). */}
+      <div
+        style={{
+          position: "absolute",
+          left: "8%",
+          right: "8%",
+          bottom: "12%",
+          height: "22%",
+          background:
+            "radial-gradient(ellipse at center bottom, rgba(240,136,62,0.10) 0%, rgba(240,136,62,0) 60%)",
+          pointerEvents: "none",
+          filter: "blur(10px)",
+        }}
+      />
+      {/* Original bottom vignette — kept so the CTA sinks into the skyline
+          base as it did in v18d. */}
       <div
         style={{
           position: "absolute",
@@ -798,7 +841,7 @@ const ChartOutro: React.FC<{
           fontSize: 32,
           fontWeight: 400,
           letterSpacing: "0.10em",
-          opacity: 0.55,
+          opacity: 0.55 * heroOpacity,
           textTransform: "lowercase",
         }}
       >
@@ -819,6 +862,7 @@ const ChartOutro: React.FC<{
           lineHeight: 1,
           letterSpacing: "-0.01em",
           color: accentColor,
+          opacity: heroOpacity,
         }}
       >
         {total.toLocaleString()} contributions.
@@ -848,6 +892,7 @@ const ChartOutro: React.FC<{
           color: p.captionText,
           textShadow:
             "0 0 18px rgba(255,255,255,0.16), 0 2px 28px rgba(0,0,0,0.92), 0 0 14px rgba(0,0,0,0.6)",
+          opacity: titleOpacity,
         }}
       >
         Your skyline.
@@ -868,6 +913,7 @@ const ChartOutro: React.FC<{
           flexDirection: "column",
           alignItems: "center",
           gap: 14,
+          opacity: ctaOpacity,
         }}
       >
         <div
