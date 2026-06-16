@@ -242,6 +242,86 @@ export function buildYearConfigs(
   });
 }
 
+interface CameraPose {
+  position: [number, number, number];
+  lookAt: [number, number, number];
+  fov: number;
+}
+
+function yearLookX(cfg: YearCameraConfig): number {
+  return cfg.isPortrait ? cfg.targetX : cfg.targetX + cfg.lookAtShiftX * 0.45;
+}
+
+function yearEntryPose(cfg: YearCameraConfig): CameraPose {
+  const z = cfg.depthOffset;
+  const lookX = yearLookX(cfg);
+  if (cfg.isPortrait) {
+    return {
+      position: [cfg.targetX, 8.0, z - 14],
+      lookAt: [cfg.targetX, 1.5, z],
+      fov: 42,
+    };
+  }
+  return {
+    position: [lookX - 6.4, 5.5, z - 9.2 * cfg.framingScale],
+    lookAt: [lookX, 1.4, z],
+    fov: 38 + cfg.fovBoost,
+  };
+}
+
+function yearExitPose(cfg: YearCameraConfig): CameraPose {
+  const z = cfg.depthOffset;
+  const lookX = yearLookX(cfg);
+  return {
+    position: [lookX + 3.6, 6.2, z - 10.1],
+    lookAt: [lookX, 1.5, z],
+    fov: 43,
+  };
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function lerp3(
+  a: [number, number, number],
+  b: [number, number, number],
+  t: number,
+): [number, number, number] {
+  return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+}
+
+function bridgePoses(
+  from: YearCameraConfig,
+  to: YearCameraConfig,
+  segEnd: number,
+  nextStart: number,
+  exitOverride?: CameraPose,
+): CameraKeyframe[] {
+  const span = nextStart - segEnd;
+  if (span <= 0) return [];
+  const exit = exitOverride ?? yearExitPose(from);
+  const entry = yearEntryPose(to);
+  const t1 = segEnd + Math.max(1, Math.floor(span * 0.52));
+  const t2 = nextStart;
+  const p1 = lerp3(exit.position, entry.position, 0.5);
+  const p2 = lerp3(exit.position, entry.position, 0.92);
+  return [
+    {
+      frame: t1,
+      position: p1,
+      lookAt: lerp3(exit.lookAt, entry.lookAt, 0.5),
+      fov: Math.min(46, lerp(exit.fov, entry.fov, 0.5)),
+    },
+    {
+      frame: t2,
+      position: p2,
+      lookAt: lerp3(exit.lookAt, entry.lookAt, 0.92),
+      fov: Math.min(46, lerp(exit.fov, entry.fov, 0.92)),
+    },
+  ];
+}
+
 export function buildAllKeyframes(
   alloc: Allocation,
   configs: readonly YearCameraConfig[],
@@ -271,7 +351,7 @@ export function buildAllKeyframes(
     const cfg = configs[index];
     const nextCfg = configs[index + 1];
     const z = cfg.depthOffset;
-    const lookX = cfg.targetX + cfg.lookAtShiftX * 0.45;
+    const lookX = yearLookX(cfg);
     const segEnd = cfg.startFrame + cfg.segmentFrames;
 
     const sweepFractions = [0.2, 0.32, 0.46, 0.6, 0.76];
@@ -350,30 +430,29 @@ export function buildAllKeyframes(
         },
       );
     }
-    // Portrait years exit looking at their actual cluster center (targetX),
-    // not the lookAtShift-adjusted lookX which would drag the camera off-center.
-    const segEndLookX = cfg.isPortrait ? cfg.targetX : lookX;
-    k.push({
-      frame: segEnd,
-      position: [segEndLookX + 4.8, 6.5, z - 10.6],
-      lookAt: [segEndLookX, 1.5, z],
-      fov: 44,
-    });
+    const exit = yearExitPose(cfg);
     if (nextCfg) {
-      const transitionSpan = Math.max(0, nextCfg.startFrame - segEnd);
-      if (transitionSpan > 0) {
-        const nextLookX = nextCfg.isPortrait
-          ? nextCfg.targetX
-          : nextCfg.targetX + nextCfg.lookAtShiftX * 0.45;
-        const bridgeZ = (z + nextCfg.depthOffset) / 2;
-        const bridgeX = (segEndLookX + nextLookX) / 2;
-        k.push({
-          frame: segEnd + Math.floor(transitionSpan * 0.5),
-          position: [bridgeX, 12.2, bridgeZ - 15.8],
-          lookAt: [bridgeX, 1.3, bridgeZ],
-          fov: 46,
-        });
-      }
+      const nextEntry = yearEntryPose(nextCfg);
+      // Pre-orient the segment exit toward the incoming year so year boundaries
+      // do not whip past and then snap back when adjacent years have very
+      // different target districts.
+      const exitForTransition: CameraPose = {
+        position: [
+          lerp(exit.position[0], nextEntry.position[0], 0.24),
+          lerp(exit.position[1], nextEntry.position[1], 0.08),
+          lerp(exit.position[2], nextEntry.position[2], 0.18),
+        ],
+        lookAt: [
+          lerp(exit.lookAt[0], nextEntry.lookAt[0], 0.24),
+          lerp(exit.lookAt[1], nextEntry.lookAt[1], 0.08),
+          lerp(exit.lookAt[2], nextEntry.lookAt[2], 0.18),
+        ],
+        fov: Math.min(46, lerp(exit.fov, nextEntry.fov, 0.2)),
+      };
+      k.push({ frame: segEnd, ...exitForTransition });
+      k.push(...bridgePoses(cfg, nextCfg, segEnd, nextCfg.startFrame, exitForTransition));
+    } else {
+      k.push({ frame: segEnd, ...exit });
     }
   }
   const outroStart = alloc.totalFrames - alloc.outroFrames;
