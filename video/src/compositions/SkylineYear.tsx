@@ -63,6 +63,19 @@ import {
   type BarPlacement,
 } from "../utils/grid";
 import { MONA_SANS_FONT_FAMILY } from "../scene/typography";
+import {
+  MARKERS,
+  SKYLINE_YEAR_FPS as PRIMITIVES_FPS,
+  SKYLINE_YEAR_TOTAL_FRAMES,
+  Z_FLOOR,
+  CRUISE_Z_MAX,
+  BUILD_LEAD,
+  ORBIT_RZ,
+  buildCameraContext,
+  lerpSpeedRemap,
+  type PeakCaption,
+  type PeakTargetBars,
+} from "../scene/primitives";
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -76,8 +89,8 @@ export const skylineYearPropsSchema = z.object({
 
 export type SkylineYearProps = z.infer<typeof skylineYearPropsSchema>;
 
-export const SKYLINE_YEAR_FPS = 30;
-export const SKYLINE_YEAR_DURATION_FRAMES = 1146; // 38.2s @30fps (6s outro hold)
+export const SKYLINE_YEAR_FPS = PRIMITIVES_FPS;
+export const SKYLINE_YEAR_DURATION_FRAMES = SKYLINE_YEAR_TOTAL_FRAMES; // 38.2s @30fps (6s outro hold)
 
 export const calculateSkylineYearMetadata: CalculateMetadataFunction<
   SkylineYearProps
@@ -93,75 +106,26 @@ export const calculateSkylineYearMetadata: CalculateMetadataFunction<
   };
 };
 
-// Phase boundaries (absolute frames @ 30fps = 30s total).
-//
-// v13 phase changes:
-//  - COLLAPSE_START=45: collapse wave starts at 1.5s, overlapping the dive,
-//    so bars are fully retracted by the time the camera hits street level (5s).
-//  - ENTRY_END=150: dive complete + collapse complete; cruise begins immediately.
-//  - CRUISE_END=450: 300-frame cruise (same as before, now starts at 150).
-//  - FLYBY_END=630: orbit extended to 180 frames (6s) — celebrates the year.
-//  - EMERGE_END=870: camera arrives at homePos here so outro shows hero angle.
-const COLLAPSE_START = 75;    // 2.5s — bars start collapsing the moment the camera
-                              // commits to the descent. Camera motion + bar motion
-                              // begin in lockstep so the collapse reads intentional,
-                              // not rushed.
-const COLLAPSE_END = 140;     // 4.67s — bars fully collapsed by F140 (65-frame window).
-                              // v27: extended by 5 frames + linear easing in
-                              // computeCollapseMultiplier so the leftmost bars stay
-                              // visibly shrinking until F134-F138 (was effectively
-                              // gone by F118 with the prior cubic ease).
-const TITLE_END = 99;         // 3.3s — kept for LowerThirdWatermark fade-in timing
-const ENTRY_END = 150;        // 5s — dive complete; cruise begins
-const COLLAPSE_RELEASE = 190; // 6.33s — collapse fully released; bars now grow via cruise reveal
-const CRUISE_END = 450;       // 15s — density-weighted cruise (bars build in)
-const FLYBY_END = 690;        // 23s — full 360° helicopter orbit (8s, leisurely)
-const APPROACH_END = 750;     // 25s — approach to peak, focus effect
-const CANYON_END = 906;       // 30.2s — canyon hold, peak spotlight
-const EMERGE_END = 966;       // 32.2s — camera arrives at elevated outroPos; outro card fades in
-const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 1146 (38.2s) — 6s outro hold at hero-card angle
+// Phase boundaries (absolute frames @ 30fps). Single source of truth is
+// `MARKERS` in scene/primitives/timeline.ts — these local aliases preserve the
+// readable names used throughout the choreography below.
+const COLLAPSE_START = MARKERS.collapseStart;     // 2.5s — bars start collapsing the moment the
+                              // camera commits to the descent. Camera motion + bar motion
+                              // begin in lockstep so the collapse reads intentional.
+const COLLAPSE_END = MARKERS.collapseEnd;         // 4.67s — bars fully collapsed by F140 (65-frame window).
+const TITLE_END = MARKERS.titleEnd;               // 3.3s — kept for LowerThirdWatermark fade-in timing
+const ENTRY_END = MARKERS.entryEnd;               // 5s — dive complete; cruise begins
+const COLLAPSE_RELEASE = MARKERS.collapseRelease; // 6.33s — collapse fully released; bars now grow via cruise reveal
+const CRUISE_END = MARKERS.cruiseEnd;             // 15s — density-weighted cruise (bars build in)
+const FLYBY_END = MARKERS.flybyEnd;               // 23s — full 360° helicopter orbit (8s, leisurely)
+const APPROACH_END = MARKERS.approachEnd;         // 25s — approach to peak, focus effect
+const CANYON_END = MARKERS.canyonEnd;             // 30.2s — canyon hold, peak spotlight
+const EMERGE_END = MARKERS.emergeEnd;             // 32.2s — camera arrives at elevated outroPos; outro card fades in
+const TOTAL = MARKERS.total;                      // 1146 (38.2s) — 6s outro hold at hero-card angle
 
-// Z floor — camera never goes closer than this in Z so it doesn't clip into
-// bars (bars span Z ±3.45 with originZ=-3 and cellSize=0.9 → far edge ≈ 3.5).
-// 13.5 keeps the camera ~10 units from bar faces — cinematic "street-level"
-// without going inside the geometry.
-const Z_FLOOR = 13.5;
-
-// Maximum cruise Z. The camera arrives at F150 with Z = Z_FLOOR + 2.5 = 16.
-// Capping the cruise maximum here prevents the camera from pulling further back
-// on sparse sections than it started — the swing is now 13.5..16.5 (22%),
-// was 13.5..19 (40%). Fixed regardless of data because it's relative to Z_FLOOR.
-const CRUISE_Z_MAX = 16.5;
-
-// Bar build-in: how far ahead of the camera the wave extends, in world units.
-const BUILD_LEAD = 9;
-
-// Orbit height above the skyline base. BAR_MAX_HEIGHT=6 (from grid.ts), so
-// ORBIT_H=9 gives 3 units clearance above any bar for any data set.
-const ORBIT_H = 9;
-
-// Orbit Z radius. Fixed because skyline depth = 7 days × stride≈1 = 7 units —
-// constant for any year. ORBIT_RZ=30 gives 4× the skyline depth, a comfortable
-// perspective distance from both front and back of the grid.
-const ORBIT_RZ = 30;
-
-interface PeakCaption {
-  /** The large numeric metric (e.g. 497). */
-  count: number;
-  /** "PEAK WEEK" or "PEAK DAY" */
-  label: string;
-  /** Formatted date range, e.g. "Apr 20 – Apr 26" */
-  dateRange: string;
-}
-
-interface PeakTargetBars {
-  /** Bars to glow during the canyon moment (peakWeek column if available). */
-  highlight: BarPlacement[];
-  /** Caption to surface during the canyon moment. */
-  caption: PeakCaption | null;
-  /** X position to centre the canyon dive on. */
-  centerX: number;
-}
+// Spatial constants live in scene/primitives/constants.ts. Z_FLOOR, CRUISE_Z_MAX,
+// BUILD_LEAD and ORBIT_RZ are imported above; ORBIT_H is consumed via the
+// camera context (ctx.orbit.h).
 
 /** Format "2025-04-20" → "Apr 20" */
 export function fmtDate(iso: string): string {
@@ -223,61 +187,6 @@ export function pickPeakTarget(
   return { highlight: [], caption: null, centerX: fallbackCenterX };
 }
 
-/**
- * Build a piecewise-linear remap of cruise time `u in [0,1]` (uniform) to a
- * density-weighted progress along the year. The camera spends MORE frames in
- * dense stretches (slow-mo through bustling districts) and FEWER frames in
- * sparse stretches (skim across quiet weeks). The curve is normalized so the
- * year always uses its full cruise budget regardless of density distribution.
- *
- * Returns an array of `[u, t]` pairs where `u` is uniform progress through
- * cruise time and `t` is the position along the year's X span. With no
- * density variation (empty year), `t === u` (uniform cruise).
- */
-function buildSpeedRemap(curve: DensitySample[]): Array<[number, number]> {
-  const N = curve.length;
-  if (N < 2) {
-    return [[0, 0], [1, 1]];
-  }
-  // Weight: dwell-time per sample = (0.4 + density). Sparse weeks get 0.4,
-  // dense weeks get 1.4 → ~3.5× speed difference between extremes.
-  const weights: number[] = curve.map((s) => 0.4 + s.density);
-  let totalW = 0;
-  for (const w of weights) totalW += w;
-  // Cumulative time (u) per sample, normalized.
-  const cumU: number[] = [];
-  let acc = 0;
-  for (let i = 0; i < N; i++) {
-    cumU.push(acc / totalW);
-    acc += weights[i];
-  }
-  cumU.push(1);
-  // Map each sample to its spatial position (t in [0,1]).
-  const samples: Array<[number, number]> = [];
-  for (let i = 0; i < N; i++) {
-    const tSpace = i / (N - 1);
-    samples.push([cumU[i], tSpace]);
-  }
-  // Ensure endpoints are exact.
-  samples[0] = [0, 0];
-  samples[samples.length - 1] = [1, 1];
-  return samples;
-}
-
-function lerpSpeedRemap(remap: Array<[number, number]>, u: number): number {
-  if (u <= remap[0][0]) return remap[0][1];
-  if (u >= remap[remap.length - 1][0]) return remap[remap.length - 1][1];
-  for (let i = 0; i < remap.length - 1; i++) {
-    const [u0, t0] = remap[i];
-    const [u1, t1] = remap[i + 1];
-    if (u >= u0 && u <= u1) {
-      const f = (u - u0) / Math.max(u1 - u0, 1e-9);
-      return t0 + (t1 - t0) * f;
-    }
-  }
-  return remap[remap.length - 1][1];
-}
-
 export function buildKeyframes(
   year: YearData,
   placements: BarPlacement[],
@@ -285,47 +194,21 @@ export function buildKeyframes(
   densityCurve: DensitySample[],
   hasContent: boolean,
 ): CameraKeyframe[] {
-  const geom = gridGeometry(year);
-  const stride = geom.cellSize + geom.gap;
-  const span = (geom.weekCount - 1) * stride;
-  const speedRemap = buildSpeedRemap(densityCurve);
+  // All data-derivation is centralised in buildCameraContext so the camera
+  // grammar reads from one place. The local destructures below preserve the
+  // names the choreography uses.
+  const ctx = buildCameraContext(year, placements, peak, densityCurve, hasContent);
+  const { geom, midActiveX, lastActiveX, cruiseSpan } = ctx.activity;
+  const speedRemap = ctx.speedRemap;
 
-  const activeXs = placements
-    .filter((p) => p.inYear && p.count > 0)
-    .map((p) => p.x);
-  const hasActive = activeXs.length > 0;
-  const firstActiveX = hasActive ? Math.min(...activeXs) : geom.originX;
-  const lastActiveX = hasActive ? Math.max(...activeXs) : geom.originX + span;
-  const midActiveX = (firstActiveX + lastActiveX) / 2;
-  const cruiseEndX = hasActive
-    ? Math.min(geom.originX + span, lastActiveX)
-    : geom.originX + span;
-  const cruiseSpan = cruiseEndX - geom.originX;
-
-  // Hero-card "home" position (v25): now identical to the outro pose so
-  // F0 and F1146 share the same camera. Combined with the outro tail fade
-  // (stat+CTA fade out F1128→F1146), this closes the loop seam: F1146
-  // settles to caption+tagline+atmosphere, which is exactly what F0 shows.
-  // The viewer can re-watch from F0 with zero visual pop.
-  const homePos: [number, number, number] = [midActiveX, 22, 50];
-  const homeLook: [number, number, number] = [midActiveX, 5, 0];
-  const homeFov = 30;
-
-  // Outro position: v22 — trajectory panel iteration (CD + DP + Type
-  // consensus). Lower the bars in frame so the skyline sits BETWEEN the
-  // type cluster and the CTA with breathing room, rather than crowding
-  // the tagline.
-  //
-  // pos Y=20 unchanged (depth gain from v21 is real — keep it).
-  // lookAt Y 3 → 6: raises the camera's aim point, dropping the bars in
-  // frame. Depression 16.6° → 13.8°. Still firmly in the "city, not chart"
-  // zone (DP's 10-22° guideline; v18d was 10.9° and read cinematic).
-  //
-  // Bar peaks now sit at ~48% from top (was 41%), base ~76% (was 72%).
-  // The hero moment regains its negative-space stage.
-  const outroPos: [number, number, number] = [midActiveX, 22, 50];
-  const outroLook: [number, number, number] = [midActiveX, 5, 0];
-  const outroFov = 30;
+  // Hero-card "home" / outro pose (v25): F0 and F1146 share this exact pose so
+  // the loop seam closes with zero visual pop. Sourced from ctx.loopPose.
+  const homePos = ctx.loopPose.position;
+  const homeLook = ctx.loopPose.lookAt;
+  const homeFov = ctx.loopPose.fov;
+  const outroPos = ctx.loopPose.position;
+  const outroLook = ctx.loopPose.lookAt;
+  const outroFov = ctx.loopPose.fov;
 
   const k: CameraKeyframe[] = [];
 
@@ -393,30 +276,16 @@ export function buildKeyframes(
   // [20, 42] to prevent the orbit from becoming too tight or too wide.
   // ORBIT_RZ stays fixed (see module-level constant — skyline depth is constant
   // for any year). ORBIT_H=9 gives 3-unit clearance above BAR_MAX_HEIGHT=6.
-  const halfActiveSpan = (lastActiveX - firstActiveX) / 2;
-  const orbitRX = Math.min(42, Math.max(20, halfActiveSpan * 1.2));
-  const orbitH = ORBIT_H;
-  const peakX = hasContent ? peak.centerX : midActiveX;
+  const orbitRX = ctx.orbit.rx;
+  const orbitH = ctx.orbit.h;
   const orbitFrames = FLYBY_END - CRUISE_END; // 180 frames = 6s
 
-  // v28 — fixed focal centre for the orbit.
-  //
-  // Previously the orbit lookAt used lookX = nearX + 0.35*(peakX-nearX)
-  // (position-dependent) and lookZ = 5.5 (a world point in FRONT of the
-  // skyline). When the camera swept to the back half of the orbit (camZ < 0),
-  // lookZ=5.5 meant the camera was looking FORWARD through the skyline to a
-  // point far behind the viewer. The skyline appeared as a thin strip off to
-  // one side rather than filling the frame.
-  //
-  // Fix: one fixed focal centre that never moves regardless of orbital
-  // position — midActiveX biased 35% toward peak, Y=3, Z=0 (the front face
-  // plane of the skyline). Every orbit camera now looks at the same world
-  // point, creating a true "circle-the-building" inspection feel. From the
-  // front the focal point is centred in depth; from the back the camera sees
-  // the rear face of the skyline columns pointing toward Z=0.
-  const orbitFocalX = midActiveX + 0.35 * (peakX - midActiveX);
-  const orbitFocalY = 3.0;
-  const orbitFocalZ = 0;
+  // v28 — fixed focal centre for the orbit (see buildCameraContext). One world
+  // point the camera looks at from every orbital angle: midActiveX biased 35%
+  // toward the peak column, Y=3, Z=0 (the skyline's front-face plane). This
+  // creates a true "circle-the-building" inspection feel instead of the skyline
+  // appearing as a thin strip off to one side on the back half of the orbit.
+  const [orbitFocalX, orbitFocalY, orbitFocalZ] = ctx.orbit.focal;
 
   // v26 — cruise→orbit bridge keyframe at F465.
   // Updated in v28: bridge lookZ = 0 (matches new orbit lookZ) and lookX
@@ -446,9 +315,7 @@ export function buildKeyframes(
   }
 
   // ---- 570..660 Peak approach -----
-  const px = peak.centerX;
-  const peakLift = peakLiftAtX(px, placements);
-  const peakY = Math.max(2.4, Math.min(peakLift * 0.55 + 1.0, 5.5));
+  const { px, peakY } = ctx.peakShot;
 
   if (hasContent) {
     // v27: Bridge keyframe at F720 between orbit end (F690) and peak approach
@@ -460,7 +327,7 @@ export function buildKeyframes(
     // interpolation; lookZ = 0 (matches new orbit lookZ; was 2.75).
     k.push({
       frame: 720,
-      position: [(midActiveX + (px - 4)) / 2, (ORBIT_H + peakY + 1.4) / 2, (ORBIT_RZ + Z_FLOOR + 4.0) / 2],
+      position: [(midActiveX + (px - 4)) / 2, (orbitH + peakY + 1.4) / 2, (ORBIT_RZ + Z_FLOOR + 4.0) / 2],
       lookAt: [(orbitFocalX + px) / 2, (orbitFocalY + peakY * 0.55) / 2, 0],
       fov: 40,
     });
