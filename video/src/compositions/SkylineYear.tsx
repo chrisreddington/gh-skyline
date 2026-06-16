@@ -358,7 +358,10 @@ export function buildKeyframes(
     const rawDensity = densityAt(densityCurve, x);
     smoothedDensity = smoothedDensity * 0.75 + rawDensity * 0.25;
     const lift = peakLiftAtX(x, placements);
-    const z = Math.max(Z_FLOOR, 19 - smoothedDensity * (19 - Z_FLOOR));
+    // Cap cruise Z at 16.5 (entry Z = Z_FLOOR+2.5 = 16) — prevents camera
+    // from zooming further out than its arrival position on sparse sections.
+    const CRUISE_Z_MAX = 16.5;
+    const z = Math.max(Z_FLOOR, CRUISE_Z_MAX - smoothedDensity * (CRUISE_Z_MAX - Z_FLOOR));
     const y = Math.max(5.0, 5.4 + (lift - 2.4) * 0.45);
     const fov = 42 - smoothedDensity * 4;
     const lookY = smoothedDensity > 0.4 ? 1.2 + smoothedDensity * 1.0 : 0.8;
@@ -371,45 +374,46 @@ export function buildKeyframes(
   }
 
   // ---- 450..690 Full 360° helicopter orbit (8s, leisurely) -----
-  // Elliptical orbit tightened to RX=42/RZ=30 (was 55/26) so the distance from
-  // the skyline stays more uniform across the orbit — eliminates the
-  // "zoomed-too-far-out" feel at the X-axis extremes. Height 9 = just above
-  // average bar tops, well below peak columns.
-  //
-  // lookAt: instead of a fixed center-pivot (which makes the skyline foreshorten
-  // to a thin line at the side), the camera tracks the nearest active part of the
-  // skyline — like a helicopter passenger looking out the window as the city
-  // slides past, with a 35% bias toward the peak column.
-  const orbitRX = 42;
+  // v28: orbitRX is data-adaptive — 20% beyond the active half-span so the
+  // camera stays proportional for any year (sparse or dense). Clamped to
+  // [20, 42] to prevent the orbit from becoming too tight or too wide.
+  // orbitRZ stays fixed at 30 (skyline depth is always ~7 units so a fixed
+  // front/back radius works for any data set).
+  const halfActiveSpan = (lastActiveX - firstActiveX) / 2;
+  const orbitRX = Math.min(42, Math.max(20, halfActiveSpan * 1.2));
   const orbitRZ = 30;
   const orbitH = 9;
   const peakX = hasContent ? peak.centerX : midActiveX;
   const orbitFrames = FLYBY_END - CRUISE_END; // 180 frames = 6s
 
+  // v28 — fixed focal centre for the orbit.
+  //
+  // Previously the orbit lookAt used lookX = nearX + 0.35*(peakX-nearX)
+  // (position-dependent) and lookZ = 5.5 (a world point in FRONT of the
+  // skyline). When the camera swept to the back half of the orbit (camZ < 0),
+  // lookZ=5.5 meant the camera was looking FORWARD through the skyline to a
+  // point far behind the viewer. The skyline appeared as a thin strip off to
+  // one side rather than filling the frame.
+  //
+  // Fix: one fixed focal centre that never moves regardless of orbital
+  // position — midActiveX biased 35% toward peak, Y=3, Z=0 (the front face
+  // plane of the skyline). Every orbit camera now looks at the same world
+  // point, creating a true "circle-the-building" inspection feel. From the
+  // front the focal point is centred in depth; from the back the camera sees
+  // the rear face of the skyline columns pointing toward Z=0.
+  const orbitFocalX = midActiveX + 0.35 * (peakX - midActiveX);
+  const orbitFocalY = 3.0;
+  const orbitFocalZ = 0;
+
   // v26 — cruise→orbit bridge keyframe at F465.
-  //
-  // Between cruise end (F450) and orbit seg=1 (F480), FIVE motions stack up
-  // simultaneously in 30 frames: X-slide (~+5u), Y-rise (+4u), Z-pull-back
-  // (+7.5u), lookAt-Z jump (0→5.5), FOV widen (42→48). Catmull-Rom interpolates
-  // them all together as one muddled crossfade — reads as a robotic "jerk" /
-  // "changes direction sharply" rather than a real helicopter banking.
-  //
-  // The bridge keyframe halves the rate of every motion across the handoff by
-  // giving the spline an intermediate anchor. The transition now eases through
-  // TWO beats of moderate motion instead of ONE beat of compounded motion.
-  // Position, lookAt, and FOV are all set at the linear midpoint between F450
-  // (cruise end) and F480 (orbit seg=1, peak-biased).
+  // Updated in v28: bridge lookZ = 0 (matches new orbit lookZ) and lookX
+  // interpolates from cruise end (bridgeLookX0 ≈ maxActiveX) to orbitFocalX.
   const bridgeLookX0 = midActiveX + 25;        // ≈ cruise end lookAt X
   const seg1CamX = midActiveX + orbitRX * Math.sin(Math.PI / 4);
-  const seg1NearX = Math.min(
-    Math.max(seg1CamX, midActiveX - 35),
-    midActiveX + 35,
-  );
-  const seg1LookX = seg1NearX + 0.35 * (peakX - seg1NearX);
   k.push({
     frame: 465,
     position: [(midActiveX + 25 + seg1CamX) / 2, 7, 17.25],
-    lookAt: [(bridgeLookX0 + seg1LookX) / 2, 1.9, 2.75],
+    lookAt: [(bridgeLookX0 + orbitFocalX) / 2, 1.9, 0],
     fov: 45,
   });
 
@@ -418,14 +422,10 @@ export function buildKeyframes(
     const orbitFrame = CRUISE_END + Math.round((seg / 8) * orbitFrames);
     const camX = midActiveX + orbitRX * Math.sin(theta);
     const camZ = orbitRZ * Math.cos(theta);
-    // Clamp lookAt X to stay within the active skyline span so the camera
-    // never looks "past" the ends; bias 35% toward peak for a natural focal draw.
-    const nearX = Math.min(Math.max(camX, midActiveX - 35), midActiveX + 35);
-    const lookX = nearX + 0.35 * (peakX - nearX);
     k.push({
       frame: orbitFrame,
       position: [camX, orbitH, camZ],
-      lookAt: [lookX, 3.0, 5.5],
+      lookAt: [orbitFocalX, orbitFocalY, orbitFocalZ],
       fov: 48,
     });
   }
@@ -440,19 +440,13 @@ export function buildKeyframes(
     // (F750). Without this midpoint, Catmull-Rom over the 60-frame gap let
     // the camera's X-velocity (≈0.54/frame from orbital tangent at F690)
     // outrun the lookAt's X-velocity (≈0.38/frame), producing an apparent
-    // left-then-right swing around F720-F730. The bridge halves the rate of
-    // compounded motion and locks the spline against overshoot.
-    // Linear midpoint of position, lookAt, and FOV between F690 and F750.
-    const seg8CamX = midActiveX;                          // sin(2π) = 0
-    const seg8NearX = Math.min(
-      Math.max(seg8CamX, midActiveX - 35),
-      midActiveX + 35,
-    );
-    const seg8LookX = seg8NearX + 0.35 * (px - seg8NearX);
+    // left-then-right swing around F720-F730.
+    // v28: lookX uses orbitFocalX (fixed centre) for the orbit side of the
+    // interpolation; lookZ = 0 (matches new orbit lookZ; was 2.75).
     k.push({
       frame: 720,
-      position: [(seg8CamX + (px - 4)) / 2, (9 + peakY + 1.4) / 2, (30 + Z_FLOOR + 4.0) / 2],
-      lookAt: [(seg8LookX + px) / 2, (3.0 + peakY * 0.55) / 2, 2.75],
+      position: [(midActiveX + (px - 4)) / 2, (9 + peakY + 1.4) / 2, (30 + Z_FLOOR + 4.0) / 2],
+      lookAt: [(orbitFocalX + px) / 2, (orbitFocalY + peakY * 0.55) / 2, 0],
       fov: 40,
     });
 
