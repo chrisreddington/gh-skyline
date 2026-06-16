@@ -49,9 +49,7 @@ import { HighlightMoment } from "../scene/HighlightMoment";
 import {
   CameraRig,
   sampleRig,
-  peakLiftAtX,
   buildRelativeDensityCurve,
-  densityAt,
   type CameraKeyframe,
   type DensitySample,
 } from "../scene/CameraRig";
@@ -67,12 +65,9 @@ import {
   MARKERS,
   SKYLINE_YEAR_FPS as PRIMITIVES_FPS,
   SKYLINE_YEAR_TOTAL_FRAMES,
-  Z_FLOOR,
-  CRUISE_Z_MAX,
   BUILD_LEAD,
-  ORBIT_RZ,
   buildCameraContext,
-  lerpSpeedRemap,
+  composeYearCamera,
   type PeakCaption,
   type PeakTargetBars,
 } from "../scene/primitives";
@@ -117,15 +112,14 @@ const TITLE_END = MARKERS.titleEnd;               // 3.3s — kept for LowerThir
 const ENTRY_END = MARKERS.entryEnd;               // 5s — dive complete; cruise begins
 const COLLAPSE_RELEASE = MARKERS.collapseRelease; // 6.33s — collapse fully released; bars now grow via cruise reveal
 const CRUISE_END = MARKERS.cruiseEnd;             // 15s — density-weighted cruise (bars build in)
-const FLYBY_END = MARKERS.flybyEnd;               // 23s — full 360° helicopter orbit (8s, leisurely)
 const APPROACH_END = MARKERS.approachEnd;         // 25s — approach to peak, focus effect
 const CANYON_END = MARKERS.canyonEnd;             // 30.2s — canyon hold, peak spotlight
 const EMERGE_END = MARKERS.emergeEnd;             // 32.2s — camera arrives at elevated outroPos; outro card fades in
 const TOTAL = MARKERS.total;                      // 1146 (38.2s) — 6s outro hold at hero-card angle
 
-// Spatial constants live in scene/primitives/constants.ts. Z_FLOOR, CRUISE_Z_MAX,
-// BUILD_LEAD and ORBIT_RZ are imported above; ORBIT_H is consumed via the
-// camera context (ctx.orbit.h).
+// Spatial constants live in scene/primitives/constants.ts and are consumed by
+// the camera primitives via the camera context. BUILD_LEAD is imported above
+// because the React component still uses it to drive the bar build-in reveal.
 
 /** Format "2025-04-20" → "Apr 20" */
 export function fmtDate(iso: string): string {
@@ -194,219 +188,11 @@ export function buildKeyframes(
   densityCurve: DensitySample[],
   hasContent: boolean,
 ): CameraKeyframe[] {
-  // All data-derivation is centralised in buildCameraContext so the camera
-  // grammar reads from one place. The local destructures below preserve the
-  // names the choreography uses.
+  // Thin wrapper: derive the camera context once, then delegate to the
+  // primitives composer which stitches the six camera shots into one keyframe
+  // track. See scene/primitives/ for the shot grammar.
   const ctx = buildCameraContext(year, placements, peak, densityCurve, hasContent);
-  const { geom, midActiveX, lastActiveX, cruiseSpan } = ctx.activity;
-  const speedRemap = ctx.speedRemap;
-
-  // Hero-card "home" / outro pose (v25): F0 and F1146 share this exact pose so
-  // the loop seam closes with zero visual pop. Sourced from ctx.loopPose.
-  const homePos = ctx.loopPose.position;
-  const homeLook = ctx.loopPose.lookAt;
-  const homeFov = ctx.loopPose.fov;
-  const outroPos = ctx.loopPose.position;
-  const outroLook = ctx.loopPose.lookAt;
-  const outroFov = ctx.loopPose.fov;
-
-  const k: CameraKeyframe[] = [];
-
-  // ---- F0..F75 Intro hero card — TRUE HOLD at outroPos -----
-  // v25 motion-editor verdict: a 30-frame "breath" that creeps Z 50→46 is
-  // not a breath, it's a slow start to the dive. Hold completely still
-  // through F75, then commit to the descent. One synchronized departure
-  // with the text fade-out.
-  k.push({ frame: 0,  position: homePos, lookAt: homeLook, fov: homeFov, cut: true });
-  // cut:true on F75 forces a discrete hold from F0 → F75 and zeros the
-  // outgoing tangent at F75, preventing the Catmull-Rom spline from
-  // anticipating the leftward F120 keyframe with an early rightward bulge
-  // (the "tilt right then slam left" pattern visible at F0..F60).
-  k.push({ frame: 75, position: homePos, lookAt: homeLook, fov: homeFov, cut: true });
-
-  // ---- F75..F150 Descent into the street -----
-  // v25 DP-prescribed intermediate at F120 to prevent Catmull-Rom overshoot
-  // on the 75-frame descent. The trajectory commits LEFT and DOWN from F75
-  // onward in one continuous arc — no banana, no direction reversal.
-  k.push({
-    frame: 120,
-    position: [midActiveX - BUILD_LEAD / 2, 9, 15],
-    lookAt: [geom.originX + 4, 2.2, 0],
-    fov: 39,
-  });
-
-  // ---- F150 Dive arrival (cruise start) -----
-  // Camera starts far enough left (originX - BUILD_LEAD - 2) so that at
-  // ENTRY_END all bars are still AHEAD of the camera (revealMul=0 for all),
-  // preventing a jarring "pre-revealed" pop when cruise begins.
-  k.push({
-    frame: ENTRY_END,
-    position: [geom.originX - BUILD_LEAD - 2, 4.5, Z_FLOOR + 2.5],
-    lookAt: [geom.originX + 2, 1.8, 0],
-    fov: 42,
-  });
-
-  // ---- 150..450 Cruise (bars rebuild L→R) -----
-  const cruiseSamples = 5;
-  let smoothedDensity = densityAt(densityCurve, geom.originX);
-  for (let i = 1; i <= cruiseSamples; i++) {
-    const u = i / cruiseSamples;
-    const t = lerpSpeedRemap(speedRemap, u);
-    const x = geom.originX + t * cruiseSpan;
-    const rawDensity = densityAt(densityCurve, x);
-    smoothedDensity = smoothedDensity * 0.75 + rawDensity * 0.25;
-    const lift = peakLiftAtX(x, placements);
-    // Cap cruise Z at 16.5 (entry Z = Z_FLOOR+2.5 = 16) — prevents camera
-    // from zooming further out than its arrival position on sparse sections.
-    const z = Math.max(Z_FLOOR, CRUISE_Z_MAX - smoothedDensity * (CRUISE_Z_MAX - Z_FLOOR));
-    const y = Math.max(5.0, 5.4 + (lift - 2.4) * 0.45);
-    const fov = 42 - smoothedDensity * 4;
-    const lookY = smoothedDensity > 0.4 ? 1.2 + smoothedDensity * 1.0 : 0.8;
-    // Ramp look-ahead from 4 → 0 in the final 20% of cruise so the camera
-    // doesn't look beyond the last bar (fixes the December-overshoot feel).
-    const endRamp = Math.max(0, (u - 0.8) / 0.2);
-    const lookAhead = 4 * (1 - endRamp);
-    const frame = ENTRY_END + Math.round(u * (CRUISE_END - ENTRY_END));
-    k.push({ frame, position: [x, y, z], lookAt: [x + lookAhead, lookY, 0], fov });
-  }
-
-  // ---- 450..690 Full 360° helicopter orbit (8s, leisurely) -----
-  // v28: orbitRX is data-adaptive — 20% beyond the active half-span so the
-  // camera stays proportional for any year (sparse or dense). Clamped to
-  // [20, 42] to prevent the orbit from becoming too tight or too wide.
-  // ORBIT_RZ stays fixed (see module-level constant — skyline depth is constant
-  // for any year). ORBIT_H=9 gives 3-unit clearance above BAR_MAX_HEIGHT=6.
-  const orbitRX = ctx.orbit.rx;
-  const orbitH = ctx.orbit.h;
-  const orbitFrames = FLYBY_END - CRUISE_END; // 180 frames = 6s
-
-  // v28 — fixed focal centre for the orbit (see buildCameraContext). One world
-  // point the camera looks at from every orbital angle: midActiveX biased 35%
-  // toward the peak column, Y=3, Z=0 (the skyline's front-face plane). This
-  // creates a true "circle-the-building" inspection feel instead of the skyline
-  // appearing as a thin strip off to one side on the back half of the orbit.
-  const [orbitFocalX, orbitFocalY, orbitFocalZ] = ctx.orbit.focal;
-
-  // v26 — cruise→orbit bridge keyframe at F465.
-  // Updated in v28: bridge lookZ = 0 (matches new orbit lookZ) and lookX
-  // interpolates from cruise end (bridgeLookX0 ≈ lastActiveX) to orbitFocalX.
-  // Y=7 is a hand-tuned midpoint between cruise exit (~5.4) and ORBIT_H=9.
-  // Z=17.25 is a hand-tuned midpoint between CRUISE_Z_MAX and seg1 orbit Z.
-  const bridgeLookX0 = lastActiveX;    // cruise end: camera was looking at the final bar
-  const seg1CamX = midActiveX + orbitRX * Math.sin(Math.PI / 4);
-  k.push({
-    frame: 465,
-    position: [(lastActiveX + seg1CamX) / 2, 7, 17.25],
-    lookAt: [(bridgeLookX0 + orbitFocalX) / 2, 1.9, 0],
-    fov: 45,
-  });
-
-  for (let seg = 1; seg <= 8; seg++) {
-    const theta = (seg / 8) * Math.PI * 2;
-    const orbitFrame = CRUISE_END + Math.round((seg / 8) * orbitFrames);
-    const camX = midActiveX + orbitRX * Math.sin(theta);
-    const camZ = ORBIT_RZ * Math.cos(theta);
-    k.push({
-      frame: orbitFrame,
-      position: [camX, orbitH, camZ],
-      lookAt: [orbitFocalX, orbitFocalY, orbitFocalZ],
-      fov: 48,
-    });
-  }
-
-  // ---- 570..660 Peak approach -----
-  const { px, peakY } = ctx.peakShot;
-
-  if (hasContent) {
-    // v27: Bridge keyframe at F720 between orbit end (F690) and peak approach
-    // (F750). Without this midpoint, Catmull-Rom over the 60-frame gap let
-    // the camera's X-velocity (≈0.54/frame from orbital tangent at F690)
-    // outrun the lookAt's X-velocity (≈0.38/frame), producing an apparent
-    // left-then-right swing around F720-F730.
-    // v28: lookX uses orbitFocalX (fixed centre) for the orbit side of the
-    // interpolation; lookZ = 0 (matches new orbit lookZ; was 2.75).
-    k.push({
-      frame: 720,
-      position: [(midActiveX + (px - 4)) / 2, (orbitH + peakY + 1.4) / 2, (ORBIT_RZ + Z_FLOOR + 4.0) / 2],
-      lookAt: [(orbitFocalX + px) / 2, (orbitFocalY + peakY * 0.55) / 2, 0],
-      fov: 40,
-    });
-
-    k.push({
-      frame: APPROACH_END,
-      position: [px - 4, peakY + 1.4, Z_FLOOR + 4.0],
-      lookAt: [px, peakY * 0.55, 0],
-      fov: 32,
-    });
-
-    // ---- 660..780 Canyon HOLD -----
-    k.push({
-      frame: APPROACH_END + 40,
-      position: [px - 1.0, peakY + 0.7, Z_FLOOR + 3.5],
-      lookAt: [px + 0.8, peakY * 0.5, 0],
-      fov: 29,
-    });
-    k.push({
-      frame: APPROACH_END + 80,
-      position: [px + 0.8, peakY + 0.5, Z_FLOOR + 3.4],
-      lookAt: [px + 1.5, peakY * 0.48, 0],
-      fov: 28,
-    });
-    // Gentle drift at canyon hold end so camera already has upward velocity
-    // when the emerge arc begins — prevents the dead-stop lurch at CANYON_END.
-    k.push({
-      frame: CANYON_END - 20,  // 886 — canyon hold peak
-      position: [px + 2.5, peakY + 1.0, Z_FLOOR + 3.8],
-      lookAt: [px + 1.5, peakY * 0.5, 0],
-      fov: 30,
-    });
-    k.push({
-      frame: CANYON_END,       // 906 — gentle lift already underway
-      position: [px + 2.5, peakY + 3.5, Z_FLOOR + 5.5],
-      lookAt: [px + 1.5, peakY * 0.55 + 0.8, 0.5],
-      fov: 32,
-    });
-  } else {
-    k.push({
-      frame: APPROACH_END,
-      position: [midActiveX, 8, 22],
-      lookAt: [midActiveX, 1.5, 0],
-      fov: 44,
-    });
-    k.push({
-      frame: CANYON_END,
-      position: [midActiveX, 10, 26],
-      lookAt: [midActiveX, 1.5, 0],
-      fov: 48,
-    });
-  }
-
-  // ---- Emerge: single arc keyframe then outro hold -----
-  // Smooth midpoint between canyon exit and v23 outroPos [midX, 22, 50]/[5, 0].
-  k.push({
-    frame: CANYON_END + 30,  // 936 — arc midpoint
-    position: [midActiveX - 1, 16, 38],
-    lookAt: [midActiveX, 3.5, -1],
-    fov: 39,
-  });
-
-  // ---- EMERGE_END..TOTAL Outro holds at hero-card-style elevated position -----
-  // Only ONE final keyframe at EMERGE_END=966. The composition runs to TOTAL
-  // (frame 1056) but no further keyframe is added: sampleRig clamps to the
-  // last keyframe's position/lookAt/fov for all frames >= last.frame, giving
-  // a rock-solid static hold from F966 → F1056 (3s). Adding a duplicate
-  // keyframe at TOTAL previously caused subtle drift because Catmull-Rom
-  // computed a non-zero tangent at F966 from the arc keyframe → next-segment
-  // velocity, pulling the camera slightly off outroPos mid-segment.
-  k.push({
-    frame: EMERGE_END,  // 966
-    position: outroPos,
-    lookAt: outroLook,
-    fov: outroFov,
-  });
-
-  k.sort((a, b) => a.frame - b.frame);
-  return k;
+  return composeYearCamera(ctx);
 }
 
 export const SkylineYear: React.FC<SkylineYearProps> = ({
