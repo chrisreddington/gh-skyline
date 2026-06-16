@@ -127,8 +127,23 @@ const TOTAL = SKYLINE_YEAR_DURATION_FRAMES; // 1146 (38.2s) — 6s outro hold at
 // without going inside the geometry.
 const Z_FLOOR = 13.5;
 
+// Maximum cruise Z. The camera arrives at F150 with Z = Z_FLOOR + 2.5 = 16.
+// Capping the cruise maximum here prevents the camera from pulling further back
+// on sparse sections than it started — the swing is now 13.5..16.5 (22%),
+// was 13.5..19 (40%). Fixed regardless of data because it's relative to Z_FLOOR.
+const CRUISE_Z_MAX = 16.5;
+
 // Bar build-in: how far ahead of the camera the wave extends, in world units.
 const BUILD_LEAD = 9;
+
+// Orbit height above the skyline base. BAR_MAX_HEIGHT=6 (from grid.ts), so
+// ORBIT_H=9 gives 3 units clearance above any bar for any data set.
+const ORBIT_H = 9;
+
+// Orbit Z radius. Fixed because skyline depth = 7 days × stride≈1 = 7 units —
+// constant for any year. ORBIT_RZ=30 gives 4× the skyline depth, a comfortable
+// perspective distance from both front and back of the grid.
+const ORBIT_RZ = 30;
 
 interface PeakCaption {
   /** The large numeric metric (e.g. 497). */
@@ -360,7 +375,6 @@ export function buildKeyframes(
     const lift = peakLiftAtX(x, placements);
     // Cap cruise Z at 16.5 (entry Z = Z_FLOOR+2.5 = 16) — prevents camera
     // from zooming further out than its arrival position on sparse sections.
-    const CRUISE_Z_MAX = 16.5;
     const z = Math.max(Z_FLOOR, CRUISE_Z_MAX - smoothedDensity * (CRUISE_Z_MAX - Z_FLOOR));
     const y = Math.max(5.0, 5.4 + (lift - 2.4) * 0.45);
     const fov = 42 - smoothedDensity * 4;
@@ -377,12 +391,11 @@ export function buildKeyframes(
   // v28: orbitRX is data-adaptive — 20% beyond the active half-span so the
   // camera stays proportional for any year (sparse or dense). Clamped to
   // [20, 42] to prevent the orbit from becoming too tight or too wide.
-  // orbitRZ stays fixed at 30 (skyline depth is always ~7 units so a fixed
-  // front/back radius works for any data set).
+  // ORBIT_RZ stays fixed (see module-level constant — skyline depth is constant
+  // for any year). ORBIT_H=9 gives 3-unit clearance above BAR_MAX_HEIGHT=6.
   const halfActiveSpan = (lastActiveX - firstActiveX) / 2;
   const orbitRX = Math.min(42, Math.max(20, halfActiveSpan * 1.2));
-  const orbitRZ = 30;
-  const orbitH = 9;
+  const orbitH = ORBIT_H;
   const peakX = hasContent ? peak.centerX : midActiveX;
   const orbitFrames = FLYBY_END - CRUISE_END; // 180 frames = 6s
 
@@ -407,12 +420,14 @@ export function buildKeyframes(
 
   // v26 — cruise→orbit bridge keyframe at F465.
   // Updated in v28: bridge lookZ = 0 (matches new orbit lookZ) and lookX
-  // interpolates from cruise end (bridgeLookX0 ≈ maxActiveX) to orbitFocalX.
-  const bridgeLookX0 = midActiveX + 25;        // ≈ cruise end lookAt X
+  // interpolates from cruise end (bridgeLookX0 ≈ lastActiveX) to orbitFocalX.
+  // Y=7 is a hand-tuned midpoint between cruise exit (~5.4) and ORBIT_H=9.
+  // Z=17.25 is a hand-tuned midpoint between CRUISE_Z_MAX and seg1 orbit Z.
+  const bridgeLookX0 = lastActiveX;    // cruise end: camera was looking at the final bar
   const seg1CamX = midActiveX + orbitRX * Math.sin(Math.PI / 4);
   k.push({
     frame: 465,
-    position: [(midActiveX + 25 + seg1CamX) / 2, 7, 17.25],
+    position: [(lastActiveX + seg1CamX) / 2, 7, 17.25],
     lookAt: [(bridgeLookX0 + orbitFocalX) / 2, 1.9, 0],
     fov: 45,
   });
@@ -421,7 +436,7 @@ export function buildKeyframes(
     const theta = (seg / 8) * Math.PI * 2;
     const orbitFrame = CRUISE_END + Math.round((seg / 8) * orbitFrames);
     const camX = midActiveX + orbitRX * Math.sin(theta);
-    const camZ = orbitRZ * Math.cos(theta);
+    const camZ = ORBIT_RZ * Math.cos(theta);
     k.push({
       frame: orbitFrame,
       position: [camX, orbitH, camZ],
@@ -445,7 +460,7 @@ export function buildKeyframes(
     // interpolation; lookZ = 0 (matches new orbit lookZ; was 2.75).
     k.push({
       frame: 720,
-      position: [(midActiveX + (px - 4)) / 2, (9 + peakY + 1.4) / 2, (30 + Z_FLOOR + 4.0) / 2],
+      position: [(midActiveX + (px - 4)) / 2, (ORBIT_H + peakY + 1.4) / 2, (ORBIT_RZ + Z_FLOOR + 4.0) / 2],
       lookAt: [(orbitFocalX + px) / 2, (orbitFocalY + peakY * 0.55) / 2, 0],
       fov: 40,
     });
