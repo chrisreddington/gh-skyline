@@ -302,10 +302,21 @@ function allocateWeighted(
     // Verify minimum feasibility.
     const sumInt = intSeg.reduce((a, b) => a + b, 0);
     if (sumInt < budget - n) {
-      // Significant under-utilisation: pad the largest year.
-      const diff = budget - sumInt;
-      const largestIdx = intSeg.indexOf(Math.max(...intSeg));
-      intSeg[largestIdx] += diff;
+      // Under-utilisation: distribute spare budget respecting per-year max caps.
+      // Sort ascending so years with the most headroom are padded first.
+      let remaining = budget - sumInt;
+      const padOrder = [...Array(n).keys()].sort((a, b) => intSeg[a] - intSeg[b]);
+      for (const idx of padOrder) {
+        if (remaining <= 0) break;
+        const headroom = maxSeg - intSeg[idx];
+        if (headroom > 0) {
+          const add = Math.min(headroom, remaining);
+          intSeg[idx] += add;
+          remaining -= add;
+        }
+      }
+      // If remaining > 0 all years are at maxSeg; accept the shorter total —
+      // the composition will simply be shorter than maxDurationSeconds.
     } else if (sumInt > budget) {
       // Trim from the largest unfixed (or largest overall) until we fit.
       let over = sumInt - budget;
