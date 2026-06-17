@@ -39,6 +39,19 @@ const VALID_THEMES = new Set(["dark", "light"]);
 const VALID_RESOLUTIONS = new Set(["4k", "1080p"]);
 
 /**
+ * Convert untrusted strings (JSON usernames) into a safe filename slug.
+ */
+function safeSlug(input: string): string {
+  const slug = input
+    .trim()
+    .replace(/[\\/]/g, "-")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[.-]+|[.-]+$/g, "");
+  return slug.length > 0 ? slug : "user";
+}
+
+/**
  * Parse argv (excluding node + script). Exported so unit tests can exercise
  * argument handling without spawning the CLI.
  */
@@ -110,7 +123,7 @@ export function pickComposition(
 export function defaultOutputPath(doc: SkylineDocument, outDir = "out"): string {
   const ys = doc.years.map((y) => y.year).sort((a, b) => a - b);
   const range = ys.length === 1 ? String(ys[0]) : `${ys[0]}-${ys[ys.length - 1]}`;
-  return path.join(outDir, `${doc.username}-${range}-flythrough.mp4`);
+  return path.join(outDir, `${safeSlug(doc.username)}-${range}-flythrough.mp4`);
 }
 
 function readDocument(input: string): SkylineDocument {

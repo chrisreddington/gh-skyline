@@ -72,18 +72,6 @@ npm run render -- /path/to/skyline.json --out out/me-2025-flythrough.mp4
 Defaults: outputs go to `video/out/{username}-{year-or-range}-flythrough.mp4`.
 `out/` is gitignored.
 
-### One-command user/year render
-
-This wrapper exports JSON with `go run .` and immediately renders an MP4.
-
-```sh
-# Single year
-npm run render:user -- --user <login> --year 2025 --resolution 1080p
-
-# Full history
-npm run render:user -- --user <login> --full --max-duration 180
-```
-
 ### CLI options
 
 | Flag             | Values            | Default |

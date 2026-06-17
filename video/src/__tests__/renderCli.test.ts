@@ -101,4 +101,11 @@ describe("defaultOutputPath", () => {
     const p = defaultOutputPath(docWithYears([2024, 2022, 2023]), "out");
     expect(p).toBe(path.join("out", "tester-2022-2024-flythrough.mp4"));
   });
+
+  it("sanitizes unsafe username characters in output path", () => {
+    const doc = docWithYears([2025]);
+    doc.username = "../../evil\\\\name";
+    const p = defaultOutputPath(doc, "out");
+    expect(p).toBe(path.join("out", "evil-name-2025-flythrough.mp4"));
+  });
 });

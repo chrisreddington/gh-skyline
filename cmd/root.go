@@ -55,6 +55,7 @@ to create a "building" effect, with empty spaces (no contributions) at the top.`
 // init initializes command line flags for the skyline CLI tool.
 func init() {
 	initFlags()
+	initVideoCommand(rootCmd)
 }
 
 // Execute initializes and executes the root command for the GitHub Skyline CLI.
