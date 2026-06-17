@@ -11,7 +11,7 @@ Two compositions are registered:
 | `SkylineFull`  | Full `SkylineDocument` | up to 180 s @ 30 fps | JSON document with `years.length >= 2`  |
 
 > `gh skyline video` currently supports single-year renders only. Use `npm run render` directly for multi-year `SkylineFull` experiments.
-> The native command auto-installs `video` npm dependencies on first run.
+> If `video/node_modules` is missing, the native command prompts for approval before installing dependencies.
 
 Both default to 4 K (3840×2160). Switch with `--resolution 1080p` for faster
 iteration.
@@ -83,7 +83,11 @@ From the repository root:
 gh skyline video --user <login> --year 2025 --resolution 1080p
 ```
 
-This command orchestrates JSON export + Remotion render and bootstraps `video/node_modules` automatically when missing.
+This command orchestrates JSON export + Remotion render and handles first-run dependency setup behind an explicit approval prompt.
+If dependencies are missing, it asks for explicit confirmation before running:
+
+- `npm ci --no-audit --no-fund` (when `package-lock.json` exists)
+- `npm install --no-audit --no-fund` (fallback when no lockfile)
 
 ### CLI options
 

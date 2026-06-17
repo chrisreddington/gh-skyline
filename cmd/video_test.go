@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -159,5 +161,58 @@ func TestBuildNPMInstallArgs(t *testing.T) {
 		if args[i] != wantCI[i] {
 			t.Fatalf("buildNPMInstallArgs()[%d] = %q, want %q", i, args[i], wantCI[i])
 		}
+	}
+}
+
+func TestParseInstallApproval(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  string
+		expect bool
+	}{
+		{name: "lowercase y", input: "y\n", expect: true},
+		{name: "uppercase yes", input: "YES\n", expect: true},
+		{name: "whitespace no", input: "  n  \n", expect: false},
+		{name: "blank defaults no", input: "\n", expect: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := parseInstallApproval(tt.input)
+			if got != tt.expect {
+				t.Fatalf("parseInstallApproval(%q) = %v, want %v", tt.input, got, tt.expect)
+			}
+		})
+	}
+}
+
+func TestRequestInstallApproval(t *testing.T) {
+	t.Parallel()
+
+	videoDir := "/tmp/video"
+	installArgs := []string{"ci", "--no-audit", "--no-fund"}
+
+	var prompt bytes.Buffer
+	approved, err := requestInstallApproval(strings.NewReader("n\n"), &prompt, videoDir, installArgs)
+	if err != nil {
+		t.Fatalf("requestInstallApproval() unexpected error: %v", err)
+	}
+	if approved {
+		t.Fatal("requestInstallApproval() expected false for declined input")
+	}
+
+	output := prompt.String()
+	if !strings.Contains(output, "npm ci --no-audit --no-fund") {
+		t.Fatalf("prompt missing install command: %q", output)
+	}
+	if !strings.Contains(output, filepath.Join(videoDir, "node_modules")) {
+		t.Fatalf("prompt missing install location: %q", output)
+	}
+	if !strings.Contains(output, "Proceed? [y/N]:") {
+		t.Fatalf("prompt missing confirmation text: %q", output)
 	}
 }

@@ -1,11 +1,15 @@
 package cmd
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/github/gh-skyline/cmd/skyline"
@@ -37,7 +41,7 @@ rendering it via the Remotion project under ./video.
 
 Currently, only single-year video renders are supported via this command.
 Multi-year video support will follow.
-Missing video npm dependencies are installed automatically on first run.
+If video dependencies are missing, you'll be prompted before installation.
 
 Examples:
   gh skyline video --user mona --year 2025
@@ -87,7 +91,7 @@ func runVideoCommand(opts videoOptions) error {
 	if err != nil {
 		return err
 	}
-	if err := ensureVideoDependencies(videoDir); err != nil {
+	if err := ensureVideoDependencies(videoDir, os.Stdin, os.Stderr); err != nil {
 		return err
 	}
 
@@ -109,8 +113,8 @@ func runVideoCommand(opts videoOptions) error {
 	return nil
 }
 
-// ensureVideoDependencies installs video project npm dependencies when missing.
-func ensureVideoDependencies(videoDir string) error {
+// ensureVideoDependencies installs video project npm dependencies when approved.
+func ensureVideoDependencies(videoDir string, in io.Reader, out io.Writer) error {
 	if _, err := exec.LookPath("npm"); err != nil {
 		return fmt.Errorf("npm is required to render video; install Node.js (includes npm) and retry")
 	}
@@ -123,10 +127,16 @@ func ensureVideoDependencies(videoDir string) error {
 		return nil
 	}
 
-	fmt.Fprintf(os.Stderr, "Installing video dependencies in %s (first run only)...\n", videoDir)
 	installArgs, err := buildNPMInstallArgs(videoDir)
 	if err != nil {
 		return err
+	}
+	approved, err := requestInstallApproval(in, out, videoDir, installArgs)
+	if err != nil {
+		return err
+	}
+	if !approved {
+		return fmt.Errorf("dependency installation not approved; rerun and confirm to continue")
 	}
 
 	cmd := exec.Command("npm", installArgs...)
@@ -137,6 +147,33 @@ func ensureVideoDependencies(videoDir string) error {
 		return fmt.Errorf("install video dependencies: %w", err)
 	}
 	return nil
+}
+
+// requestInstallApproval prompts for explicit approval before dependency install.
+func requestInstallApproval(in io.Reader, out io.Writer, videoDir string, installArgs []string) (bool, error) {
+	installCommand := fmt.Sprintf("npm %s", strings.Join(installArgs, " "))
+	fmt.Fprintf(out, "Video dependencies are missing and must be installed before rendering.\n")
+	fmt.Fprintf(out, "This will run: %s\n", installCommand)
+	fmt.Fprintf(out, "Install location: %s\n", filepath.Join(videoDir, "node_modules"))
+	fmt.Fprintf(out, "Prerequisite: Node.js and npm must already be installed.\n")
+	fmt.Fprint(out, "Proceed? [y/N]: ")
+
+	reader := bufio.NewReader(in)
+	answer, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, fmt.Errorf("read install confirmation: %w", err)
+	}
+	return parseInstallApproval(answer), nil
+}
+
+// parseInstallApproval returns true only for explicit yes confirmations.
+func parseInstallApproval(answer string) bool {
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 // needsNPMInstall reports whether video/node_modules is missing.
