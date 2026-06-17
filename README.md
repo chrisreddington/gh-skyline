@@ -163,6 +163,27 @@ Field notes:
 - `stats` — derived per-year metrics. Computed only over days whose date falls within the requested year, so adjacent-year padding days never influence `peakDay`, `peakWeek`, `firstContribution`, `lastContribution`, or `longestStreak`. If a year has no contributions, `stats` is `null`.
 - `longestStreak` — longest run of consecutive days with `count > 0`. For v1 a streak is confined to a single year (it does not span year boundaries, even within `--full` exports).
 
+### Generate a fly-through video
+
+The repo ships with a Remotion + React Three Fiber project under [`video/`](./video/README.md) that turns a JSON export into an MP4 fly-through of your skyline.
+
+```bash
+# Produce JSON for a single year
+gh skyline --year 2025 --json --art-only --output /tmp/skyline.json
+
+# Render an MP4 (auto-picks the SkylineYear or SkylineFull composition)
+cd video
+npm install
+npm run render -- /tmp/skyline.json --resolution 1080p
+
+# Or use the native subcommand (single-year only for now):
+# If video dependencies are missing, you'll be prompted before this runs:
+#   npm ci --no-audit --no-fund   (or npm install --no-audit --no-fund)
+gh skyline video --user <login> --year 2025 --resolution 1080p
+```
+
+Two compositions are available in the video project: `SkylineYear` (~30 s, single year) and `SkylineFull` (multi-year, capped at ~180 s by default). The native `gh skyline video` command currently supports only single-year renders while multi-year command support is in progress. See [`video/README.md`](./video/README.md) for studio usage, theming, and tuning.
+
 Open the GitHub profile for the authenticated user:
 
 ```bash
