@@ -37,6 +37,7 @@ rendering it via the Remotion project under ./video.
 
 Currently, only single-year video renders are supported via this command.
 Multi-year video support will follow.
+Missing video npm dependencies are installed automatically on first run.
 
 Examples:
   gh skyline video --user mona --year 2025
@@ -86,6 +87,9 @@ func runVideoCommand(opts videoOptions) error {
 	if err != nil {
 		return err
 	}
+	if err := ensureVideoDependencies(videoDir); err != nil {
+		return err
+	}
 
 	if opts.output != "" {
 		opts.output, err = resolveOutputPath(opts.output)
@@ -103,6 +107,60 @@ func runVideoCommand(opts videoOptions) error {
 		return fmt.Errorf("video render failed: %w (hint: run `cd %s && npm install`)", err, videoDir)
 	}
 	return nil
+}
+
+// ensureVideoDependencies installs video project npm dependencies when missing.
+func ensureVideoDependencies(videoDir string) error {
+	if _, err := exec.LookPath("npm"); err != nil {
+		return fmt.Errorf("npm is required to render video; install Node.js (includes npm) and retry")
+	}
+
+	install, err := needsNPMInstall(videoDir)
+	if err != nil {
+		return err
+	}
+	if !install {
+		return nil
+	}
+
+	fmt.Fprintf(os.Stderr, "Installing video dependencies in %s (first run only)...\n", videoDir)
+	installArgs, err := buildNPMInstallArgs(videoDir)
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command("npm", installArgs...)
+	cmd.Dir = videoDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("install video dependencies: %w", err)
+	}
+	return nil
+}
+
+// needsNPMInstall reports whether video/node_modules is missing.
+func needsNPMInstall(videoDir string) (bool, error) {
+	nodeModulesPath := filepath.Join(videoDir, "node_modules")
+	info, err := os.Stat(nodeModulesPath)
+	if err == nil {
+		return !info.IsDir(), nil
+	}
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	return false, fmt.Errorf("check %s: %w", nodeModulesPath, err)
+}
+
+// buildNPMInstallArgs picks npm install mode based on lockfile presence.
+func buildNPMInstallArgs(videoDir string) ([]string, error) {
+	lockPath := filepath.Join(videoDir, "package-lock.json")
+	if _, err := os.Stat(lockPath); err == nil {
+		return []string{"ci", "--no-audit", "--no-fund"}, nil
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("check %s: %w", lockPath, err)
+	}
+	return []string{"install", "--no-audit", "--no-fund"}, nil
 }
 
 // validateSingleYearSelection enforces the current single-year-only video scope.

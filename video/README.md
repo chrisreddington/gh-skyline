@@ -11,6 +11,7 @@ Two compositions are registered:
 | `SkylineFull`  | Full `SkylineDocument` | up to 180 s @ 30 fps | JSON document with `years.length >= 2`  |
 
 > `gh skyline video` currently supports single-year renders only. Use `npm run render` directly for multi-year `SkylineFull` experiments.
+> The native command auto-installs `video` npm dependencies on first run.
 
 Both default to 4 K (3840×2160). Switch with `--resolution 1080p` for faster
 iteration.
@@ -74,6 +75,16 @@ npm run render -- /path/to/skyline.json --out out/me-2025-flythrough.mp4
 Defaults: outputs go to `video/out/{username}-{year-or-range}-flythrough.mp4`.
 `out/` is gitignored.
 
+### Native command wrapper
+
+From the repository root:
+
+```sh
+gh skyline video --user <login> --year 2025 --resolution 1080p
+```
+
+This command orchestrates JSON export + Remotion render and bootstraps `video/node_modules` automatically when missing.
+
 ### CLI options
 
 | Flag             | Values            | Default |
@@ -120,6 +131,13 @@ because actual frame rendering is heavy.
 - **`@remotion/three` peer warnings**: keep `three`, `@react-three/fiber`,
   `@react-three/drei`, and the Remotion family at their installed versions —
   bumping them piecemeal can break the WebGL bridge.
+
+## Third-party assets
+
+- `public/fonts/monasans-regular.ttf`
+- `public/fonts/monasans-medium.ttf`
+
+These are from [github/mona-sans](https://github.com/github/mona-sans), licensed under the SIL Open Font License v1.1. See [`public/fonts/OFL.txt`](./public/fonts/OFL.txt).
 
 ## Layout
 

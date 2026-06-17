@@ -105,3 +105,59 @@ func TestResolveOutputPath(t *testing.T) {
 		t.Fatalf("resolveOutputPath() = %q, want %q", got, want)
 	}
 }
+
+func TestNeedsNPMInstall(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	install, err := needsNPMInstall(dir)
+	if err != nil {
+		t.Fatalf("needsNPMInstall() unexpected error: %v", err)
+	}
+	if !install {
+		t.Fatal("needsNPMInstall() expected true when node_modules is missing")
+	}
+
+	nodeModulesDir := filepath.Join(dir, "node_modules")
+	if err := os.Mkdir(nodeModulesDir, 0o755); err != nil {
+		t.Fatalf("Mkdir(node_modules) unexpected error: %v", err)
+	}
+	install, err = needsNPMInstall(dir)
+	if err != nil {
+		t.Fatalf("needsNPMInstall() unexpected error: %v", err)
+	}
+	if install {
+		t.Fatal("needsNPMInstall() expected false when node_modules exists")
+	}
+}
+
+func TestBuildNPMInstallArgs(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	args, err := buildNPMInstallArgs(dir)
+	if err != nil {
+		t.Fatalf("buildNPMInstallArgs() unexpected error: %v", err)
+	}
+	wantInstall := []string{"install", "--no-audit", "--no-fund"}
+	for i := range wantInstall {
+		if args[i] != wantInstall[i] {
+			t.Fatalf("buildNPMInstallArgs()[%d] = %q, want %q", i, args[i], wantInstall[i])
+		}
+	}
+
+	lockPath := filepath.Join(dir, "package-lock.json")
+	if err := os.WriteFile(lockPath, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("WriteFile(package-lock.json) unexpected error: %v", err)
+	}
+	args, err = buildNPMInstallArgs(dir)
+	if err != nil {
+		t.Fatalf("buildNPMInstallArgs() unexpected error: %v", err)
+	}
+	wantCI := []string{"ci", "--no-audit", "--no-fund"}
+	for i := range wantCI {
+		if args[i] != wantCI[i] {
+			t.Fatalf("buildNPMInstallArgs()[%d] = %q, want %q", i, args[i], wantCI[i])
+		}
+	}
+}

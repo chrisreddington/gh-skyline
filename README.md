@@ -176,7 +176,8 @@ cd video
 npm install
 npm run render -- /tmp/skyline.json --resolution 1080p
 
-# Or use the native subcommand (single-year only for now; requires video/node_modules installed):
+# Or use the native subcommand (single-year only for now):
+# On first run it auto-installs video dependencies in ./video.
 gh skyline video --user <login> --year 2025 --resolution 1080p
 ```
 
