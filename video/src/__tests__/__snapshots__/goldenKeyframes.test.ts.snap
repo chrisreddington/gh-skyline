@@ -1,0 +1,1916 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Golden keyframes (parity baseline for primitives refactor) > buildKeyframes output is stable for the empty fixture 1`] = `
+[
+  {
+    "cut": true,
+    "fov": 30,
+    "frame": 0,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+  {
+    "cut": true,
+    "fov": 30,
+    "frame": 75,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39,
+    "frame": 120,
+    "lookAt": [
+      -22,
+      2.2,
+      0,
+    ],
+    "position": [
+      -4.5,
+      9,
+      15,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 150,
+    "lookAt": [
+      -24,
+      1.8,
+      0,
+    ],
+    "position": [
+      -37,
+      4.5,
+      16,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 210,
+    "lookAt": [
+      -11.434921,
+      0.8,
+      0,
+    ],
+    "position": [
+      -15.434921,
+      5.13,
+      16.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 270,
+    "lookAt": [
+      -0.869841,
+      0.8,
+      0,
+    ],
+    "position": [
+      -4.869841,
+      5.13,
+      16.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 330,
+    "lookAt": [
+      9.695238,
+      0.8,
+      0,
+    ],
+    "position": [
+      5.695238,
+      5.13,
+      16.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 390,
+    "lookAt": [
+      20.260317,
+      0.8,
+      0,
+    ],
+    "position": [
+      16.260317,
+      5.13,
+      16.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 450,
+    "lookAt": [
+      26,
+      0.8,
+      0,
+    ],
+    "position": [
+      26,
+      5.13,
+      16.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 45,
+    "frame": 465,
+    "lookAt": [
+      13,
+      1.9,
+      0,
+    ],
+    "position": [
+      24.030866,
+      7,
+      17.25,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 480,
+    "lookAt": [
+      0,
+      3,
+      0,
+    ],
+    "position": [
+      22.061732,
+      9,
+      21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 510,
+    "lookAt": [
+      0,
+      3,
+      0,
+    ],
+    "position": [
+      31.2,
+      9,
+      0,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 540,
+    "lookAt": [
+      0,
+      3,
+      0,
+    ],
+    "position": [
+      22.061732,
+      9,
+      -21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 570,
+    "lookAt": [
+      0,
+      3,
+      0,
+    ],
+    "position": [
+      0,
+      9,
+      -30,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 600,
+    "lookAt": [
+      0,
+      3,
+      0,
+    ],
+    "position": [
+      -22.061732,
+      9,
+      -21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 630,
+    "lookAt": [
+      0,
+      3,
+      0,
+    ],
+    "position": [
+      -31.2,
+      9,
+      -0,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 660,
+    "lookAt": [
+      0,
+      3,
+      0,
+    ],
+    "position": [
+      -22.061732,
+      9,
+      21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 690,
+    "lookAt": [
+      0,
+      3,
+      0,
+    ],
+    "position": [
+      -0,
+      9,
+      30,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 44,
+    "frame": 750,
+    "lookAt": [
+      0,
+      1.5,
+      0,
+    ],
+    "position": [
+      0,
+      8,
+      22,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 906,
+    "lookAt": [
+      0,
+      1.5,
+      0,
+    ],
+    "position": [
+      0,
+      10,
+      26,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39,
+    "frame": 936,
+    "lookAt": [
+      0,
+      3.5,
+      -1,
+    ],
+    "position": [
+      -1,
+      16,
+      38,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 30,
+    "frame": 966,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+]
+`;
+
+exports[`Golden keyframes (parity baseline for primitives refactor) > buildKeyframes output is stable for the leap fixture 1`] = `
+[
+  {
+    "cut": true,
+    "fov": 30,
+    "frame": 0,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+  {
+    "cut": true,
+    "fov": 30,
+    "frame": 75,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39,
+    "frame": 120,
+    "lookAt": [
+      -22,
+      2.2,
+      0,
+    ],
+    "position": [
+      -4.5,
+      9,
+      15,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 150,
+    "lookAt": [
+      -24,
+      1.8,
+      0,
+    ],
+    "position": [
+      -37,
+      4.5,
+      16,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 41.376406,
+    "frame": 210,
+    "lookAt": [
+      -10.342829,
+      0.8,
+      0,
+    ],
+    "position": [
+      -14.342829,
+      7.01297,
+      16.032304,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40.547497,
+    "frame": 270,
+    "lookAt": [
+      -0.485187,
+      0.8,
+      0,
+    ],
+    "position": [
+      -4.485187,
+      7.02,
+      15.410623,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40.594599,
+    "frame": 330,
+    "lookAt": [
+      8.11326,
+      0.8,
+      0,
+    ],
+    "position": [
+      4.11326,
+      7.02,
+      15.445949,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40.324879,
+    "frame": 390,
+    "lookAt": [
+      17.541359,
+      1.61878,
+      0,
+    ],
+    "position": [
+      13.541359,
+      6.927689,
+      15.243659,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40.530703,
+    "frame": 450,
+    "lookAt": [
+      26,
+      0.8,
+      0,
+    ],
+    "position": [
+      26,
+      6.767014,
+      15.398028,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 45,
+    "frame": 465,
+    "lookAt": [
+      12.475,
+      1.9,
+      0,
+    ],
+    "position": [
+      24.030866,
+      7,
+      17.25,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 480,
+    "lookAt": [
+      -1.05,
+      3,
+      0,
+    ],
+    "position": [
+      22.061732,
+      9,
+      21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 510,
+    "lookAt": [
+      -1.05,
+      3,
+      0,
+    ],
+    "position": [
+      31.2,
+      9,
+      0,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 540,
+    "lookAt": [
+      -1.05,
+      3,
+      0,
+    ],
+    "position": [
+      22.061732,
+      9,
+      -21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 570,
+    "lookAt": [
+      -1.05,
+      3,
+      0,
+    ],
+    "position": [
+      0,
+      9,
+      -30,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 600,
+    "lookAt": [
+      -1.05,
+      3,
+      0,
+    ],
+    "position": [
+      -22.061732,
+      9,
+      -21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 630,
+    "lookAt": [
+      -1.05,
+      3,
+      0,
+    ],
+    "position": [
+      -31.2,
+      9,
+      -0,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 660,
+    "lookAt": [
+      -1.05,
+      3,
+      0,
+    ],
+    "position": [
+      -22.061732,
+      9,
+      21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 690,
+    "lookAt": [
+      -1.05,
+      3,
+      0,
+    ],
+    "position": [
+      -0,
+      9,
+      30,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40,
+    "frame": 720,
+    "lookAt": [
+      -2.025,
+      2.6825,
+      0,
+    ],
+    "position": [
+      -3.5,
+      7.35,
+      23.75,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 32,
+    "frame": 750,
+    "lookAt": [
+      -3,
+      2.365,
+      0,
+    ],
+    "position": [
+      -7,
+      5.7,
+      17.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 29,
+    "frame": 790,
+    "lookAt": [
+      -2.2,
+      2.15,
+      0,
+    ],
+    "position": [
+      -4,
+      5,
+      17,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 28,
+    "frame": 830,
+    "lookAt": [
+      -1.5,
+      2.064,
+      0,
+    ],
+    "position": [
+      -2.2,
+      4.8,
+      16.9,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 30,
+    "frame": 886,
+    "lookAt": [
+      -1.5,
+      2.15,
+      0,
+    ],
+    "position": [
+      -0.5,
+      5.3,
+      17.3,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 32,
+    "frame": 906,
+    "lookAt": [
+      -1.5,
+      3.165,
+      0.5,
+    ],
+    "position": [
+      -0.5,
+      7.8,
+      19,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39,
+    "frame": 936,
+    "lookAt": [
+      0,
+      3.5,
+      -1,
+    ],
+    "position": [
+      -1,
+      16,
+      38,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 30,
+    "frame": 966,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+]
+`;
+
+exports[`Golden keyframes (parity baseline for primitives refactor) > buildKeyframes output is stable for the maxed fixture 1`] = `
+[
+  {
+    "cut": true,
+    "fov": 30,
+    "frame": 0,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+  {
+    "cut": true,
+    "fov": 30,
+    "frame": 75,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39,
+    "frame": 120,
+    "lookAt": [
+      -22,
+      2.2,
+      0,
+    ],
+    "position": [
+      -4.5,
+      9,
+      15,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 150,
+    "lookAt": [
+      -24,
+      1.8,
+      0,
+    ],
+    "position": [
+      -37,
+      4.5,
+      16,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 41.067535,
+    "frame": 210,
+    "lookAt": [
+      -10.331746,
+      0.8,
+      0,
+    ],
+    "position": [
+      -14.331746,
+      7.02,
+      15.800652,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40.368187,
+    "frame": 270,
+    "lookAt": [
+      -0.069351,
+      1.607953,
+      0,
+    ],
+    "position": [
+      -4.069351,
+      7.02,
+      15.27614,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39.843676,
+    "frame": 330,
+    "lookAt": [
+      10.193045,
+      1.739081,
+      0,
+    ],
+    "position": [
+      6.193045,
+      7.02,
+      14.882757,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39.450292,
+    "frame": 390,
+    "lookAt": [
+      20.455441,
+      1.837427,
+      0,
+    ],
+    "position": [
+      16.455441,
+      7.02,
+      14.587719,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39.396429,
+    "frame": 450,
+    "lookAt": [
+      26,
+      1.850893,
+      0,
+    ],
+    "position": [
+      26,
+      7.02,
+      14.547322,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 45,
+    "frame": 465,
+    "lookAt": [
+      9.15,
+      1.9,
+      0,
+    ],
+    "position": [
+      24.030866,
+      7,
+      17.25,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 480,
+    "lookAt": [
+      -7.7,
+      3,
+      0,
+    ],
+    "position": [
+      22.061732,
+      9,
+      21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 510,
+    "lookAt": [
+      -7.7,
+      3,
+      0,
+    ],
+    "position": [
+      31.2,
+      9,
+      0,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 540,
+    "lookAt": [
+      -7.7,
+      3,
+      0,
+    ],
+    "position": [
+      22.061732,
+      9,
+      -21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 570,
+    "lookAt": [
+      -7.7,
+      3,
+      0,
+    ],
+    "position": [
+      0,
+      9,
+      -30,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 600,
+    "lookAt": [
+      -7.7,
+      3,
+      0,
+    ],
+    "position": [
+      -22.061732,
+      9,
+      -21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 630,
+    "lookAt": [
+      -7.7,
+      3,
+      0,
+    ],
+    "position": [
+      -31.2,
+      9,
+      -0,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 660,
+    "lookAt": [
+      -7.7,
+      3,
+      0,
+    ],
+    "position": [
+      -22.061732,
+      9,
+      21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 690,
+    "lookAt": [
+      -7.7,
+      3,
+      0,
+    ],
+    "position": [
+      -0,
+      9,
+      30,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40,
+    "frame": 720,
+    "lookAt": [
+      -14.85,
+      2.6825,
+      0,
+    ],
+    "position": [
+      -13,
+      7.35,
+      23.75,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 32,
+    "frame": 750,
+    "lookAt": [
+      -22,
+      2.365,
+      0,
+    ],
+    "position": [
+      -26,
+      5.7,
+      17.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 29,
+    "frame": 790,
+    "lookAt": [
+      -21.2,
+      2.15,
+      0,
+    ],
+    "position": [
+      -23,
+      5,
+      17,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 28,
+    "frame": 830,
+    "lookAt": [
+      -20.5,
+      2.064,
+      0,
+    ],
+    "position": [
+      -21.2,
+      4.8,
+      16.9,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 30,
+    "frame": 886,
+    "lookAt": [
+      -20.5,
+      2.15,
+      0,
+    ],
+    "position": [
+      -19.5,
+      5.3,
+      17.3,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 32,
+    "frame": 906,
+    "lookAt": [
+      -20.5,
+      3.165,
+      0.5,
+    ],
+    "position": [
+      -19.5,
+      7.8,
+      19,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39,
+    "frame": 936,
+    "lookAt": [
+      0,
+      3.5,
+      -1,
+    ],
+    "position": [
+      -1,
+      16,
+      38,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 30,
+    "frame": 966,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+]
+`;
+
+exports[`Golden keyframes (parity baseline for primitives refactor) > buildKeyframes output is stable for the sample fixture 1`] = `
+[
+  {
+    "cut": true,
+    "fov": 30,
+    "frame": 0,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+  {
+    "cut": true,
+    "fov": 30,
+    "frame": 75,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39,
+    "frame": 120,
+    "lookAt": [
+      -22,
+      2.2,
+      0,
+    ],
+    "position": [
+      -4.5,
+      9,
+      15,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 150,
+    "lookAt": [
+      -24,
+      1.8,
+      0,
+    ],
+    "position": [
+      -37,
+      4.5,
+      16,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 41.304103,
+    "frame": 210,
+    "lookAt": [
+      -9.707928,
+      0.8,
+      0,
+    ],
+    "position": [
+      -13.707928,
+      6.255227,
+      15.978078,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 41.26211,
+    "frame": 270,
+    "lookAt": [
+      2.67893,
+      0.8,
+      0,
+    ],
+    "position": [
+      -1.32107,
+      6.257682,
+      15.946583,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40.586979,
+    "frame": 330,
+    "lookAt": [
+      7.601878,
+      0.8,
+      0,
+    ],
+    "position": [
+      3.601878,
+      6.51309,
+      15.440234,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40.827581,
+    "frame": 390,
+    "lookAt": [
+      18.203148,
+      0.8,
+      0,
+    ],
+    "position": [
+      14.203148,
+      6.242656,
+      15.620686,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40.959368,
+    "frame": 450,
+    "lookAt": [
+      26,
+      0.8,
+      0,
+    ],
+    "position": [
+      26,
+      6.257511,
+      15.719526,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 45,
+    "frame": 465,
+    "lookAt": [
+      13.35,
+      1.9,
+      0,
+    ],
+    "position": [
+      24.030866,
+      7,
+      17.25,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 480,
+    "lookAt": [
+      0.7,
+      3,
+      0,
+    ],
+    "position": [
+      22.061732,
+      9,
+      21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 510,
+    "lookAt": [
+      0.7,
+      3,
+      0,
+    ],
+    "position": [
+      31.2,
+      9,
+      0,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 540,
+    "lookAt": [
+      0.7,
+      3,
+      0,
+    ],
+    "position": [
+      22.061732,
+      9,
+      -21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 570,
+    "lookAt": [
+      0.7,
+      3,
+      0,
+    ],
+    "position": [
+      0,
+      9,
+      -30,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 600,
+    "lookAt": [
+      0.7,
+      3,
+      0,
+    ],
+    "position": [
+      -22.061732,
+      9,
+      -21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 630,
+    "lookAt": [
+      0.7,
+      3,
+      0,
+    ],
+    "position": [
+      -31.2,
+      9,
+      -0,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 660,
+    "lookAt": [
+      0.7,
+      3,
+      0,
+    ],
+    "position": [
+      -22.061732,
+      9,
+      21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 690,
+    "lookAt": [
+      0.7,
+      3,
+      0,
+    ],
+    "position": [
+      -0,
+      9,
+      30,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40,
+    "frame": 720,
+    "lookAt": [
+      1.35,
+      2.6825,
+      0,
+    ],
+    "position": [
+      -1,
+      7.35,
+      23.75,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 32,
+    "frame": 750,
+    "lookAt": [
+      2,
+      2.365,
+      0,
+    ],
+    "position": [
+      -2,
+      5.7,
+      17.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 29,
+    "frame": 790,
+    "lookAt": [
+      2.8,
+      2.15,
+      0,
+    ],
+    "position": [
+      1,
+      5,
+      17,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 28,
+    "frame": 830,
+    "lookAt": [
+      3.5,
+      2.064,
+      0,
+    ],
+    "position": [
+      2.8,
+      4.8,
+      16.9,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 30,
+    "frame": 886,
+    "lookAt": [
+      3.5,
+      2.15,
+      0,
+    ],
+    "position": [
+      4.5,
+      5.3,
+      17.3,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 32,
+    "frame": 906,
+    "lookAt": [
+      3.5,
+      3.165,
+      0.5,
+    ],
+    "position": [
+      4.5,
+      7.8,
+      19,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39,
+    "frame": 936,
+    "lookAt": [
+      0,
+      3.5,
+      -1,
+    ],
+    "position": [
+      -1,
+      16,
+      38,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 30,
+    "frame": 966,
+    "lookAt": [
+      0,
+      5,
+      0,
+    ],
+    "position": [
+      0,
+      22,
+      50,
+    ],
+  },
+]
+`;
+
+exports[`Golden keyframes (parity baseline for primitives refactor) > buildKeyframes output is stable for the sparse fixture 1`] = `
+[
+  {
+    "cut": true,
+    "fov": 30,
+    "frame": 0,
+    "lookAt": [
+      3.5,
+      5,
+      0,
+    ],
+    "position": [
+      3.5,
+      22,
+      50,
+    ],
+  },
+  {
+    "cut": true,
+    "fov": 30,
+    "frame": 75,
+    "lookAt": [
+      3.5,
+      5,
+      0,
+    ],
+    "position": [
+      3.5,
+      22,
+      50,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39,
+    "frame": 120,
+    "lookAt": [
+      -22,
+      2.2,
+      0,
+    ],
+    "position": [
+      -1,
+      9,
+      15,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 150,
+    "lookAt": [
+      -24,
+      1.8,
+      0,
+    ],
+    "position": [
+      -37,
+      4.5,
+      16,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 210,
+    "lookAt": [
+      -9.716185,
+      0.8,
+      0,
+    ],
+    "position": [
+      -13.716185,
+      5.296744,
+      16.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 270,
+    "lookAt": [
+      -1.020344,
+      0.8,
+      0,
+    ],
+    "position": [
+      -5.020344,
+      5.132642,
+      16.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 42,
+    "frame": 330,
+    "lookAt": [
+      11.26347,
+      0.8,
+      0,
+    ],
+    "position": [
+      7.26347,
+      5.13,
+      16.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 41,
+    "frame": 390,
+    "lookAt": [
+      22.866471,
+      0.8,
+      0,
+    ],
+    "position": [
+      18.866471,
+      5.805832,
+      15.75,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40.409021,
+    "frame": 450,
+    "lookAt": [
+      26,
+      0.8,
+      0,
+    ],
+    "position": [
+      26,
+      5.5425,
+      15.306766,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 45,
+    "frame": 465,
+    "lookAt": [
+      17.2875,
+      1.9,
+      0,
+    ],
+    "position": [
+      24.295942,
+      7,
+      17.25,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 480,
+    "lookAt": [
+      8.575,
+      3,
+      0,
+    ],
+    "position": [
+      22.591883,
+      9,
+      21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 510,
+    "lookAt": [
+      8.575,
+      3,
+      0,
+    ],
+    "position": [
+      30.5,
+      9,
+      0,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 540,
+    "lookAt": [
+      8.575,
+      3,
+      0,
+    ],
+    "position": [
+      22.591883,
+      9,
+      -21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 570,
+    "lookAt": [
+      8.575,
+      3,
+      0,
+    ],
+    "position": [
+      3.5,
+      9,
+      -30,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 600,
+    "lookAt": [
+      8.575,
+      3,
+      0,
+    ],
+    "position": [
+      -15.591883,
+      9,
+      -21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 630,
+    "lookAt": [
+      8.575,
+      3,
+      0,
+    ],
+    "position": [
+      -23.5,
+      9,
+      -0,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 660,
+    "lookAt": [
+      8.575,
+      3,
+      0,
+    ],
+    "position": [
+      -15.591883,
+      9,
+      21.213203,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 48,
+    "frame": 690,
+    "lookAt": [
+      8.575,
+      3,
+      0,
+    ],
+    "position": [
+      3.5,
+      9,
+      30,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 40,
+    "frame": 720,
+    "lookAt": [
+      13.2875,
+      2.322021,
+      0,
+    ],
+    "position": [
+      8.75,
+      6.694583,
+      23.75,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 32,
+    "frame": 750,
+    "lookAt": [
+      18,
+      1.644042,
+      0,
+    ],
+    "position": [
+      14,
+      4.389167,
+      17.5,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 29,
+    "frame": 790,
+    "lookAt": [
+      18.8,
+      1.494583,
+      0,
+    ],
+    "position": [
+      17,
+      3.689167,
+      17,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 28,
+    "frame": 830,
+    "lookAt": [
+      19.5,
+      1.4348,
+      0,
+    ],
+    "position": [
+      18.8,
+      3.489167,
+      16.9,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 30,
+    "frame": 886,
+    "lookAt": [
+      19.5,
+      1.494583,
+      0,
+    ],
+    "position": [
+      20.5,
+      3.989167,
+      17.3,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 32,
+    "frame": 906,
+    "lookAt": [
+      19.5,
+      2.444042,
+      0.5,
+    ],
+    "position": [
+      20.5,
+      6.489167,
+      19,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 39,
+    "frame": 936,
+    "lookAt": [
+      3.5,
+      3.5,
+      -1,
+    ],
+    "position": [
+      2.5,
+      16,
+      38,
+    ],
+  },
+  {
+    "cut": false,
+    "fov": 30,
+    "frame": 966,
+    "lookAt": [
+      3.5,
+      5,
+      0,
+    ],
+    "position": [
+      3.5,
+      22,
+      50,
+    ],
+  },
+]
+`;

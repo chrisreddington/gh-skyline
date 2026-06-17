@@ -173,3 +173,88 @@ func TestGenerateOutputFilename(t *testing.T) {
 		})
 	}
 }
+
+func TestGenerateJSONFilename(t *testing.T) {
+	tests := []struct {
+		name      string
+		user      string
+		startYear int
+		endYear   int
+		output    string
+		want      string
+	}{
+		{
+			name:      "default single year",
+			user:      "testuser",
+			startYear: 2024,
+			endYear:   2024,
+			output:    "",
+			want:      "testuser-2024-github-skyline.json",
+		},
+		{
+			name:      "default year range",
+			user:      "testuser",
+			startYear: 2020,
+			endYear:   2024,
+			output:    "",
+			want:      "testuser-2020-24-github-skyline.json",
+		},
+		{
+			name:      "output ends with .stl",
+			user:      "testuser",
+			startYear: 2024,
+			endYear:   2024,
+			output:    "foo.stl",
+			want:      "foo.json",
+		},
+		{
+			name:      "output ends with .STL (case-insensitive)",
+			user:      "testuser",
+			startYear: 2024,
+			endYear:   2024,
+			output:    "foo.STL",
+			want:      "foo.json",
+		},
+		{
+			name:      "output already ends with .json (idempotent)",
+			user:      "testuser",
+			startYear: 2024,
+			endYear:   2024,
+			output:    "foo.json",
+			want:      "foo.json",
+		},
+		{
+			name:      "output already ends with .JSON (case-insensitive idempotent)",
+			user:      "testuser",
+			startYear: 2024,
+			endYear:   2024,
+			output:    "foo.JSON",
+			want:      "foo.JSON",
+		},
+		{
+			name:      "output has no extension",
+			user:      "testuser",
+			startYear: 2024,
+			endYear:   2024,
+			output:    "foo",
+			want:      "foo.json",
+		},
+		{
+			name:      "output has unrelated extension",
+			user:      "testuser",
+			startYear: 2024,
+			endYear:   2024,
+			output:    "foo.bar",
+			want:      "foo.bar.json",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := GenerateJSONFilename(tt.user, tt.startYear, tt.endYear, tt.output)
+			if got != tt.want {
+				t.Errorf("GenerateJSONFilename() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

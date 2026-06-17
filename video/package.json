@@ -1,0 +1,36 @@
+{
+  "name": "gh-skyline-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remotion + React Three Fiber fly-through video for GitHub Skyline contribution data.",
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "tsx scripts/render.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.117.0",
+    "@react-three/fiber": "^8.17.10",
+    "@remotion/bundler": "^4.0.230",
+    "@remotion/cli": "^4.0.230",
+    "@remotion/renderer": "^4.0.230",
+    "@remotion/three": "^4.0.230",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.230",
+    "three": "^0.169.0",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.169.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

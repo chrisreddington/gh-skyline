@@ -10,8 +10,9 @@ import (
 
 // Constants for GitHub launch year and default output file format
 const (
-	githubLaunchYear = 2008
-	outputFileFormat = "%s-%s-github-skyline.stl"
+	githubLaunchYear     = 2008
+	outputFileFormat     = "%s-%s-github-skyline.stl"
+	outputJSONFileFormat = "%s-%s-github-skyline.json"
 )
 
 // ParseYearRange parses whether a year is a single year or a range of years.
@@ -73,4 +74,30 @@ func GenerateOutputFilename(user string, startYear, endYear int, output string) 
 	}
 	yearStr := FormatYearRange(startYear, endYear)
 	return fmt.Sprintf(outputFileFormat, user, yearStr)
+}
+
+// GenerateJSONFilename creates a consistent filename for the JSON export.
+//
+// Behavior:
+//   - If output is empty, returns "{user}-{yearRange}-github-skyline.json".
+//   - If output already ends with ".json" (case-insensitive), returns it
+//     unchanged (idempotent).
+//   - If output ends with ".stl" (case-insensitive), replaces that suffix
+//     with ".json" so an `--output foo.stl` produces a sibling `foo.json`.
+//   - Otherwise appends ".json" verbatim (e.g. `foo` → `foo.json`,
+//     `foo.bar` → `foo.bar.json`).
+func GenerateJSONFilename(user string, startYear, endYear int, output string) string {
+	if output == "" {
+		yearStr := FormatYearRange(startYear, endYear)
+		return fmt.Sprintf(outputJSONFileFormat, user, yearStr)
+	}
+	lower := strings.ToLower(output)
+	switch {
+	case strings.HasSuffix(lower, ".json"):
+		return output
+	case strings.HasSuffix(lower, ".stl"):
+		return output[:len(output)-len(".stl")] + ".json"
+	default:
+		return output + ".json"
+	}
 }
