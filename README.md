@@ -176,11 +176,11 @@ cd video
 npm install
 npm run render -- /tmp/skyline.json --resolution 1080p
 
-# Or use the native subcommand (requires video/node_modules installed):
+# Or use the native subcommand (single-year only for now; requires video/node_modules installed):
 gh skyline video --user <login> --year 2025 --resolution 1080p
 ```
 
-Two compositions are available: `SkylineYear` (~30 s, single year) and `SkylineFull` (multi-year, capped at ~180 s by default). See [`video/README.md`](./video/README.md) for studio usage, theming, and tuning.
+Two compositions are available in the video project: `SkylineYear` (~30 s, single year) and `SkylineFull` (multi-year, capped at ~180 s by default). The native `gh skyline video` command currently supports only single-year renders while multi-year command support is in progress. See [`video/README.md`](./video/README.md) for studio usage, theming, and tuning.
 
 Open the GitHub profile for the authenticated user:
 

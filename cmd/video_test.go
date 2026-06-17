@@ -9,7 +9,7 @@ import (
 func TestValidateVideoOptions(t *testing.T) {
 	t.Parallel()
 
-	ok := videoOptions{theme: "dark", resolution: "4k", maxDurationSeconds: 180}
+	ok := videoOptions{theme: "dark", resolution: "4k"}
 	if err := validateVideoOptions(ok); err != nil {
 		t.Fatalf("validateVideoOptions() unexpected error: %v", err)
 	}
@@ -26,12 +26,6 @@ func TestValidateVideoOptions(t *testing.T) {
 		t.Fatal("validateVideoOptions() expected error for invalid resolution")
 	}
 
-	badDuration := ok
-	badDuration.maxDurationSeconds = 0
-	if err := validateVideoOptions(badDuration); err == nil {
-		t.Fatal("validateVideoOptions() expected error for non-positive max duration")
-	}
-
 	badUser := ok
 	badUser.user = "../../evil"
 	if err := validateVideoOptions(badUser); err == nil {
@@ -43,10 +37,9 @@ func TestBuildRenderArgs(t *testing.T) {
 	t.Parallel()
 
 	opts := videoOptions{
-		theme:              "light",
-		resolution:         "1080p",
-		maxDurationSeconds: 90,
-		output:             "video/out/custom.mp4",
+		theme:      "light",
+		resolution: "1080p",
+		output:     "video/out/custom.mp4",
 	}
 	args := buildRenderArgs("/tmp/input.json", opts)
 	want := []string{
@@ -54,7 +47,6 @@ func TestBuildRenderArgs(t *testing.T) {
 		"/tmp/input.json",
 		"--theme", "light",
 		"--resolution", "1080p",
-		"--max-duration", "90",
 		"--out", "video/out/custom.mp4",
 	}
 	if len(args) != len(want) {
@@ -64,6 +56,17 @@ func TestBuildRenderArgs(t *testing.T) {
 		if args[i] != want[i] {
 			t.Fatalf("buildRenderArgs()[%d] = %q, want %q", i, args[i], want[i])
 		}
+	}
+}
+
+func TestValidateSingleYearSelection(t *testing.T) {
+	t.Parallel()
+
+	if err := validateSingleYearSelection(2025, 2025); err != nil {
+		t.Fatalf("validateSingleYearSelection() unexpected error: %v", err)
+	}
+	if err := validateSingleYearSelection(2024, 2025); err == nil {
+		t.Fatal("validateSingleYearSelection() expected error for year range")
 	}
 }
 

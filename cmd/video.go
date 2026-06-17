@@ -17,15 +17,13 @@ var githubLoginPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$
 
 // videoOptions stores CLI flags for the `gh skyline video` subcommand.
 type videoOptions struct {
-	yearRange          string
-	user               string
-	full               bool
-	theme              string
-	resolution         string
-	output             string
-	maxDurationSeconds int
-	jsonOut            string
-	keepJSON           bool
+	yearRange  string
+	user       string
+	theme      string
+	resolution string
+	output     string
+	jsonOut    string
+	keepJSON   bool
 }
 
 // initVideoCommand registers the `video` subcommand on the root command.
@@ -33,13 +31,15 @@ func initVideoCommand(root *cobra.Command) {
 	opts := videoOptions{}
 	cmd := &cobra.Command{
 		Use:   "video",
-		Short: "Generate a skyline MP4 fly-through (single year or full history)",
+		Short: "Generate a single-year skyline MP4 fly-through",
 		Long: `Generate a skyline MP4 by exporting contribution data as JSON and then
 rendering it via the Remotion project under ./video.
 
+Currently, only single-year video renders are supported via this command.
+Multi-year video support will follow.
+
 Examples:
   gh skyline video --user mona --year 2025
-  gh skyline video --user mona --full --resolution 1080p
   gh skyline video --user mona --year 2025 --output out/mona-2025.mp4`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return runVideoCommand(opts)
@@ -47,13 +47,11 @@ Examples:
 	}
 
 	flags := cmd.Flags()
-	flags.StringVarP(&opts.yearRange, "year", "y", fmt.Sprintf("%d", time.Now().Year()), "Year or year range (e.g., 2024 or 2014-2024)")
+	flags.StringVarP(&opts.yearRange, "year", "y", fmt.Sprintf("%d", time.Now().Year()), "Year to render (single year only, e.g., 2025)")
 	flags.StringVarP(&opts.user, "user", "u", "", "GitHub username (optional, defaults to authenticated user)")
-	flags.BoolVarP(&opts.full, "full", "f", false, "Generate contribution graph from join year to current year")
 	flags.StringVar(&opts.theme, "theme", "dark", "Video theme: dark|light")
 	flags.StringVar(&opts.resolution, "resolution", "4k", "Video resolution: 4k|1080p")
 	flags.StringVarP(&opts.output, "output", "o", "", "Output MP4 path (optional)")
-	flags.IntVar(&opts.maxDurationSeconds, "max-duration", 180, "SkylineFull max duration in seconds")
 	flags.StringVar(&opts.jsonOut, "json-out", "", "Persist intermediate JSON export at this path")
 	flags.BoolVar(&opts.keepJSON, "keep-json", false, "Keep temp JSON export (when --json-out is omitted)")
 
@@ -70,6 +68,9 @@ func runVideoCommand(opts videoOptions) error {
 	if err != nil {
 		return fmt.Errorf("invalid year range: %w", err)
 	}
+	if err := validateSingleYearSelection(startYear, endYear); err != nil {
+		return err
+	}
 
 	jsonPath, cleanup, err := resolveJSONExportPath(opts, startYear, endYear)
 	if err != nil {
@@ -77,7 +78,7 @@ func runVideoCommand(opts videoOptions) error {
 	}
 	defer cleanup()
 
-	if err := skyline.GenerateSkyline(startYear, endYear, opts.user, opts.full, jsonPath, true, true); err != nil {
+	if err := skyline.GenerateSkyline(startYear, endYear, opts.user, false, jsonPath, true, true); err != nil {
 		return err
 	}
 
@@ -104,6 +105,14 @@ func runVideoCommand(opts videoOptions) error {
 	return nil
 }
 
+// validateSingleYearSelection enforces the current single-year-only video scope.
+func validateSingleYearSelection(startYear, endYear int) error {
+	if startYear != endYear {
+		return fmt.Errorf("multi-year video is not supported yet; pass a single --year value")
+	}
+	return nil
+}
+
 // resolveOutputPath resolves --output to an absolute path.
 func resolveOutputPath(path string) (string, error) {
 	abs, err := filepath.Abs(path)
@@ -123,9 +132,6 @@ func validateVideoOptions(opts videoOptions) error {
 	}
 	if opts.resolution != "4k" && opts.resolution != "1080p" {
 		return fmt.Errorf("--resolution must be one of: 4k, 1080p")
-	}
-	if opts.maxDurationSeconds <= 0 {
-		return fmt.Errorf("--max-duration must be > 0")
 	}
 	return nil
 }
@@ -181,7 +187,6 @@ func buildRenderArgs(jsonPath string, opts videoOptions) []string {
 		jsonPath,
 		"--theme", opts.theme,
 		"--resolution", opts.resolution,
-		"--max-duration", fmt.Sprintf("%d", opts.maxDurationSeconds),
 	}
 	if opts.output != "" {
 		args = append(args, "--out", opts.output)

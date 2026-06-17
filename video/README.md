@@ -10,6 +10,8 @@ Two compositions are registered:
 | `SkylineYear`  | One `YearData`       | 30 s @ 30 fps    | JSON document with `years.length === 1` |
 | `SkylineFull`  | Full `SkylineDocument` | up to 180 s @ 30 fps | JSON document with `years.length >= 2`  |
 
+> `gh skyline video` currently supports single-year renders only. Use `npm run render` directly for multi-year `SkylineFull` experiments.
+
 Both default to 4 K (3840×2160). Switch with `--resolution 1080p` for faster
 iteration.
 
