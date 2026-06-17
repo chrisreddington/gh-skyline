@@ -19,7 +19,7 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 
 import { documentSchema, type SkylineDocument } from "../src/schema";
 
-interface CliOptions {
+export interface CliOptions {
   input: string;
   theme: "dark" | "light";
   resolution: "4k" | "1080p";
@@ -122,7 +122,7 @@ function readDocument(input: string): SkylineDocument {
   return documentSchema.parse(raw);
 }
 
-async function run(opts: CliOptions): Promise<void> {
+export async function renderVideo(opts: CliOptions): Promise<void> {
   const doc = readDocument(opts.input);
   const compositionId = pickComposition(doc);
   const outPath = opts.out
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
     printHelp();
     process.exit(2);
   }
-  await run({
+  await renderVideo({
     input: parsed.input,
     theme: parsed.theme,
     resolution: parsed.resolution,

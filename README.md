@@ -175,6 +175,9 @@ gh skyline --year 2025 --json --art-only --output /tmp/skyline.json
 cd video
 npm install
 npm run render -- /tmp/skyline.json --resolution 1080p
+
+# Or do export+render in one command
+npm run render:user -- --user <login> --year 2025 --resolution 1080p
 ```
 
 Two compositions are available: `SkylineYear` (~30 s, single year) and `SkylineFull` (multi-year, capped at ~180 s by default). See [`video/README.md`](./video/README.md) for studio usage, theming, and tuning.

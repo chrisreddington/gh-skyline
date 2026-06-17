@@ -37,7 +37,7 @@ import {
 } from "./compositions/WrappedCards";
 
 import sampleYear from "../fixtures/sample-year.json";
-import sampleFull from "../fixtures/sample-full.json";
+import sampleFull from "../fixtures/mixed-full.json";
 
 import type { YearData, SkylineDocument } from "./schema";
 import { MonaSansFontFaces } from "./scene/typography";

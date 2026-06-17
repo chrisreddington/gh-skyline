@@ -5,7 +5,7 @@
  * Scenarios covered:
  *   1. Single-year degenerate case (SkylineFull with one year)
  *   2. Mixed sparse + empty + dense 3-year set
- *   3. 16-year history hitting the 180s cap (sample-full.json)
+ *   3. 16-year synthetic history hitting the 180s cap
  *   4. Empty year in a multi-year set produces graceful path (no crash)
  *   5. 180s cap allocator produces ≥3s and ≤18s per-year slots
  */
@@ -19,7 +19,6 @@ import {
   yearDepthOffsets,
 } from "../compositions/fullLayout";
 import { allocate, DEFAULT_TIMING } from "../utils/timing";
-import sampleFullDoc from "../../fixtures/sample-full.json";
 import mixedFullDoc from "../../fixtures/mixed-full.json";
 import singleFullDoc from "../../fixtures/single-full.json";
 
@@ -32,6 +31,24 @@ function buildForDoc(doc: SkylineDocument, maxSecs = 180) {
   const configs = buildYearConfigs(doc as SkylineDocument, alloc, offsets);
   const keyframes = buildAllKeyframes(alloc, configs);
   return { alloc, configs, keyframes };
+}
+
+function syntheticCapHitDoc(): SkylineDocument {
+  const years = Array.from({ length: 16 }, (_, i) => 2011 + i);
+  const totals = [
+    12, 48, 0, 90, 0, 130, 220, 410, 37, 1448, 1804, 1020, 980, 2054, 4679, 920,
+  ];
+  return {
+    schemaVersion: 1,
+    username: "tester",
+    generatedAt: "2026-01-01T00:00:00Z",
+    years: years.map((year, i) => ({
+      year,
+      totalContributions: totals[i],
+      weeks: [],
+      stats: null,
+    })),
+  };
 }
 
 // ── Single-year degenerate ────────────────────────────────────────────────────
@@ -142,10 +159,10 @@ describe("SkylineFull: mixed sparse + empty + dense (3-year)", () => {
   });
 });
 
-// ── 16-year 180s cap (sample-full.json) ──────────────────────────────────────
+// ── 16-year 180s cap (synthetic fixture) ─────────────────────────────────────
 
 describe("SkylineFull: 16-year history hitting 180s cap", () => {
-  const doc = sampleFullDoc as unknown as SkylineDocument;
+  const doc = syntheticCapHitDoc();
 
   it("does not throw for 16-year input", () => {
     expect(() => buildForDoc(doc)).not.toThrow();

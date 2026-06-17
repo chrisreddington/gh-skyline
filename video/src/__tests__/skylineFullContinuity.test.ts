@@ -26,12 +26,29 @@ import { allocate, DEFAULT_TIMING } from "../utils/timing";
 
 import mixedFullDoc from "../../fixtures/mixed-full.json";
 import singleFullDoc from "../../fixtures/single-full.json";
-import sampleFullDoc from "../../fixtures/sample-full.json";
+
+function syntheticCapHitDoc(): SkylineDocument {
+  const years = Array.from({ length: 16 }, (_, i) => 2011 + i);
+  const totals = [
+    12, 48, 0, 90, 0, 130, 220, 410, 37, 1448, 1804, 1020, 980, 2054, 4679, 920,
+  ];
+  return {
+    schemaVersion: 1,
+    username: "tester",
+    generatedAt: "2026-01-01T00:00:00Z",
+    years: years.map((year, i) => ({
+      year,
+      totalContributions: totals[i],
+      weeks: [],
+      stats: null,
+    })),
+  };
+}
 
 const FIXTURES: Array<[string, SkylineDocument]> = [
   ["mixed", mixedFullDoc as unknown as SkylineDocument],
   ["single", singleFullDoc as unknown as SkylineDocument],
-  ["sample16", sampleFullDoc as unknown as SkylineDocument],
+  ["sample16", syntheticCapHitDoc()],
 ];
 
 /** Shared with SkylineYear guard: transitions above this read as yanks. */
@@ -89,4 +106,3 @@ describe("SkylineFull year-boundary continuity", () => {
     });
   }
 });
-

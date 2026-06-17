@@ -72,6 +72,18 @@ npm run render -- /path/to/skyline.json --out out/me-2025-flythrough.mp4
 Defaults: outputs go to `video/out/{username}-{year-or-range}-flythrough.mp4`.
 `out/` is gitignored.
 
+### One-command user/year render
+
+This wrapper exports JSON with `go run .` and immediately renders an MP4.
+
+```sh
+# Single year
+npm run render:user -- --user <login> --year 2025 --resolution 1080p
+
+# Full history
+npm run render:user -- --user <login> --full --max-duration 180
+```
+
 ### CLI options
 
 | Flag             | Values            | Default |
@@ -93,9 +105,8 @@ Defaults: outputs go to `video/out/{username}-{year-or-range}-flythrough.mp4`.
   `src/utils/timing.ts`. The allocator is pure and well-covered by tests, so
   it's safe to retune.
 - **Camera path**: keyframes are built in `src/compositions/SkylineYear.tsx`
-  (`buildKeyframes`) and `SkylineFull.tsx` (`buildKeyframesForYear`). Frames
-  are absolute within the composition; `peakLiftAtX` raises the camera over
-  tall weeks.
+  and `src/compositions/fullLayout.ts`. Frames are absolute within each
+  composition.
 
 ## Tests
 
@@ -124,7 +135,7 @@ because actual frame rendering is heavy.
 
 ```
 video/
-├── fixtures/        # Hand-authored sample JSON for dev (sample-year, sample-multi)
+├── fixtures/        # Hand-authored sample JSON for dev
 ├── out/             # Rendered MP4s (gitignored)
 ├── scripts/
 │   └── render.ts    # CLI wrapper around @remotion/bundler + renderMedia
